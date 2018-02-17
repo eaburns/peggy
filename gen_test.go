@@ -165,6 +165,7 @@ var testCases = []test{
 			Text: "abcxyz",
 			Kids: []*peg.Node{
 				{
+					Text: "abc",
 					Kids: []*peg.Node{{Text: "abc"}},
 				},
 				{Text: "xyz"},
@@ -251,8 +252,10 @@ var testCases = []test{
 			Text: "abc",
 			Kids: []*peg.Node{
 				{
+					Text: "abc",
 					Kids: []*peg.Node{
 						{
+							Text: "ab",
 							Kids: []*peg.Node{
 								{Text: "a"},
 								{Text: "b"},
@@ -789,6 +792,7 @@ var testCases = []test{
 			Text: "abcabc",
 			Kids: []*peg.Node{
 				{
+					Text: "abc",
 					Kids: []*peg.Node{
 						{Text: "a"},
 						{Text: "b"},
@@ -796,6 +800,7 @@ var testCases = []test{
 					},
 				},
 				{
+					Text: "abc",
 					Kids: []*peg.Node{
 						{Text: "a"},
 						{Text: "b"},
@@ -985,6 +990,7 @@ var testCases = []test{
 			Text: "abcabc",
 			Kids: []*peg.Node{
 				{
+					Text: "abc",
 					Kids: []*peg.Node{
 						{Text: "a"},
 						{Text: "b"},
@@ -992,6 +998,7 @@ var testCases = []test{
 					},
 				},
 				{
+					Text: "abc",
 					Kids: []*peg.Node{
 						{Text: "a"},
 						{Text: "b"},
@@ -1102,6 +1109,7 @@ var testCases = []test{
 			Text: "abc",
 			Kids: []*peg.Node{
 				{
+					Text: "abc",
 					Kids: []*peg.Node{
 						{Text: "a"},
 						{Text: "b"},
@@ -1435,6 +1443,7 @@ var testCases = []test{
 			Kids: []*peg.Node{
 				{Text: "123"},
 				{
+					Text: "abc",
 					Kids: []*peg.Node{{Text: "abc"}},
 				},
 			},
@@ -1451,6 +1460,7 @@ var testCases = []test{
 			Kids: []*peg.Node{
 				{Text: "123"},
 				{
+					Text: "αβξ",
 					Kids: []*peg.Node{{Text: "αβξ"}},
 				},
 			},

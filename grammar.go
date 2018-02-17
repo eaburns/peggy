@@ -1,24 +1,19 @@
-// Copyright 2017 The Peggy Authors
-//
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file or at
-// https://developers.google.com/open-source/licenses/bsd.
-
-//line grammar.y:5
+//line grammar.y:8
 package main
 
 import __yyfmt__ "fmt"
 
-//line grammar.y:5
+//line grammar.y:8
 import "io"
 
-//line grammar.y:10
+//line grammar.y:13
 type peggySymType struct {
 	yys     int
 	text    text
 	cclass  *CharClass
 	loc     Loc
 	expr    Expr
+	action  *Action
 	rule    Rule
 	rules   []Rule
 	grammar Grammar
@@ -60,7 +55,7 @@ const peggyEofCode = 1
 const peggyErrCode = 2
 const peggyInitialStackSize = 16
 
-//line grammar.y:153
+//line grammar.y:166
 
 // Parse parses a Peggy input file, and returns the Grammar.
 func Parse(in io.RuneScanner, fileName string) (*Grammar, error) {
@@ -83,67 +78,72 @@ var peggyExca = [...]int{
 	-2, 0,
 }
 
+const peggyNprod = 41
 const peggyPrivate = 57344
 
-const peggyLast = 83
+var peggyTokenNames []string
+var peggyStates []string
+
+const peggyLast = 80
 
 var peggyAct = [...]int{
 
-	24, 20, 19, 41, 43, 31, 42, 22, 32, 30,
-	4, 54, 35, 2, 39, 26, 25, 29, 46, 47,
-	48, 13, 7, 9, 35, 33, 40, 44, 53, 37,
-	45, 34, 49, 10, 1, 17, 50, 51, 18, 6,
-	52, 23, 31, 38, 36, 32, 30, 16, 10, 15,
-	8, 28, 26, 25, 29, 43, 31, 14, 3, 32,
-	30, 27, 11, 21, 12, 5, 26, 25, 29, 23,
-	31, 0, 0, 32, 30, 0, 0, 0, 0, 0,
-	26, 25, 29,
+	24, 20, 19, 43, 45, 31, 44, 22, 32, 30,
+	4, 59, 35, 2, 56, 26, 25, 29, 48, 49,
+	50, 13, 55, 33, 35, 9, 42, 46, 58, 37,
+	47, 34, 51, 41, 45, 31, 52, 53, 32, 30,
+	18, 7, 57, 54, 10, 26, 25, 29, 23, 31,
+	1, 6, 32, 30, 17, 16, 57, 15, 38, 26,
+	25, 29, 39, 40, 14, 3, 32, 30, 10, 11,
+	8, 12, 36, 26, 25, 29, 28, 27, 21, 5,
 }
 var peggyPact = [...]int{
 
-	-11, -1000, 43, -1000, -11, -1000, -11, -11, -1000, -1000,
-	41, -1000, 28, -1000, 28, 64, 17, -11, -1000, -3,
-	-1000, 36, -1000, 0, -1000, -1, -1, 7, -1000, 64,
-	-1000, -1000, -1000, 64, -1000, 64, -1000, -1000, -1000, 50,
-	-1000, -1000, -1000, -1000, -1000, -1000, -1000, -1000, -1000, 9,
-	-3, -1000, -1000, -1000, -1000,
+	-11, -1000, 63, -1000, -11, -1000, -11, -11, -1000, -1000,
+	49, -1000, 39, -1000, 39, 43, 15, -11, -1000, -3,
+	-1000, 57, -1000, 19, -1000, -1, -1, 7, -1000, 43,
+	-1000, -1000, -1000, 43, -1000, 43, -1000, -1000, 36, 8,
+	0, 29, -1000, -1000, -1000, -1000, -1000, -1000, -1000, -1000,
+	-1000, 9, -3, -1000, -1000, 29, -1000, -1000, -1000, -1000,
 }
 var peggyPgo = [...]int{
 
-	0, 65, 2, 1, 63, 7, 0, 61, 51, 3,
-	44, 39, 23, 22, 34, 13, 57,
+	0, 79, 2, 1, 78, 7, 0, 77, 76, 72,
+	3, 58, 51, 25, 41, 50, 13, 64,
 }
 var peggyR1 = [...]int{
 
-	0, 14, 1, 1, 11, 13, 13, 13, 12, 12,
+	0, 15, 1, 1, 12, 14, 14, 14, 13, 13,
 	2, 2, 3, 3, 4, 4, 5, 5, 6, 6,
 	6, 7, 7, 7, 7, 8, 8, 8, 8, 8,
-	8, 8, 8, 9, 10, 16, 16, 15, 15,
+	8, 8, 8, 10, 9, 11, 11, 17, 17, 16,
+	16,
 }
 var peggyR2 = [...]int{
 
 	0, 2, 4, 2, 1, 3, 1, 0, 3, 4,
 	3, 1, 2, 1, 2, 1, 3, 1, 2, 2,
 	1, 2, 2, 2, 1, 3, 2, 2, 1, 1,
-	1, 1, 3, 1, 1, 2, 1, 1, 0,
+	1, 1, 3, 1, 2, 2, 2, 2, 1, 1,
+	0,
 }
 var peggyChk = [...]int{
 
-	-1000, -14, -15, -16, 21, -1, -11, -13, 7, -12,
-	5, -16, -16, -15, -16, 8, 6, -13, -12, -2,
+	-1000, -15, -16, -17, 21, -1, -12, -14, 7, -13,
+	5, -17, -17, -16, -17, 8, 6, -14, -13, -2,
 	-3, -4, -5, 5, -6, 17, 16, -7, -8, 18,
-	10, 6, 9, 8, -15, 15, -10, -5, 7, 14,
-	-6, -9, 7, 5, -6, -9, 11, 12, 13, -2,
-	-2, -3, -6, 19, 2,
+	10, 6, 9, 8, -16, 15, -9, -5, -11, 5,
+	6, 14, -6, -10, 7, 5, -6, -10, 11, 12,
+	13, -2, -2, -3, 7, 14, 14, -6, 19, 2,
 }
 var peggyDef = [...]int{
 
-	38, -2, 7, 37, 36, 1, 0, 38, 4, 6,
-	0, 35, 7, 3, 37, 0, 0, 38, 5, 8,
+	40, -2, 7, 39, 38, 1, 0, 40, 4, 6,
+	0, 37, 7, 3, 39, 0, 0, 40, 5, 8,
 	11, 13, 15, 29, 17, 0, 0, 20, 24, 0,
-	28, 30, 31, 0, 2, 0, 12, 14, 34, 0,
-	18, 26, 33, 29, 19, 27, 21, 22, 23, 0,
-	9, 10, 16, 25, 32,
+	28, 30, 31, 0, 2, 0, 12, 14, 0, 29,
+	30, 0, 18, 26, 33, 29, 19, 27, 21, 22,
+	23, 0, 9, 10, 34, 35, 36, 16, 25, 32,
 }
 var peggyTok1 = [...]int{
 
@@ -505,25 +505,25 @@ peggydefault:
 
 	case 1:
 		peggyDollar = peggyS[peggypt-2 : peggypt+1]
-		//line grammar.y:34
+		//line grammar.y:39
 		{
 			peggylex.(*lexer).result = peggyDollar[2].grammar
 		}
 	case 2:
 		peggyDollar = peggyS[peggypt-4 : peggypt+1]
-		//line grammar.y:37
+		//line grammar.y:42
 		{
 			peggyVAL.grammar = Grammar{Prelude: peggyDollar[1].text, Rules: peggyDollar[3].rules}
 		}
 	case 3:
 		peggyDollar = peggyS[peggypt-2 : peggypt+1]
-		//line grammar.y:38
+		//line grammar.y:43
 		{
 			peggyVAL.grammar = Grammar{Rules: peggyDollar[1].rules}
 		}
 	case 4:
 		peggyDollar = peggyS[peggypt-1 : peggypt+1]
-		//line grammar.y:42
+		//line grammar.y:47
 		{
 			loc := peggyDollar[1].text.Begin()
 			loc.Col++ // skip the open {.
@@ -535,37 +535,37 @@ peggydefault:
 		}
 	case 5:
 		peggyDollar = peggyS[peggypt-3 : peggypt+1]
-		//line grammar.y:53
+		//line grammar.y:58
 		{
 			peggyVAL.rules = append(peggyDollar[1].rules, peggyDollar[3].rule)
 		}
 	case 6:
 		peggyDollar = peggyS[peggypt-1 : peggypt+1]
-		//line grammar.y:54
+		//line grammar.y:59
 		{
 			peggyVAL.rules = []Rule{peggyDollar[1].rule}
 		}
 	case 7:
 		peggyDollar = peggyS[peggypt-0 : peggypt+1]
-		//line grammar.y:58
+		//line grammar.y:63
 		{
 			peggyVAL.rules = nil
 		}
 	case 8:
 		peggyDollar = peggyS[peggypt-3 : peggypt+1]
-		//line grammar.y:61
+		//line grammar.y:66
 		{
 			peggyVAL.rule = Rule{Name: peggyDollar[1].text, Expr: peggyDollar[3].expr}
 		}
 	case 9:
 		peggyDollar = peggyS[peggypt-4 : peggypt+1]
-		//line grammar.y:64
+		//line grammar.y:69
 		{
 			peggyVAL.rule = Rule{Name: peggyDollar[1].text, ErrorName: peggyDollar[2].text, Expr: peggyDollar[4].expr}
 		}
 	case 10:
 		peggyDollar = peggyS[peggypt-3 : peggypt+1]
-		//line grammar.y:70
+		//line grammar.y:75
 		{
 			e, ok := peggyDollar[1].expr.(*Choice)
 			if !ok {
@@ -576,25 +576,26 @@ peggydefault:
 		}
 	case 11:
 		peggyDollar = peggyS[peggypt-1 : peggypt+1]
-		//line grammar.y:78
+		//line grammar.y:83
 		{
 			peggyVAL.expr = peggyDollar[1].expr
 		}
 	case 12:
 		peggyDollar = peggyS[peggypt-2 : peggypt+1]
-		//line grammar.y:81
+		//line grammar.y:87
 		{
-			peggyVAL.expr = &Action{Expr: peggyDollar[1].expr, Code: peggyDollar[2].text}
+			peggyDollar[2].action.Expr = peggyDollar[1].expr
+			peggyVAL.expr = peggyDollar[2].action
 		}
 	case 13:
 		peggyDollar = peggyS[peggypt-1 : peggypt+1]
-		//line grammar.y:82
+		//line grammar.y:91
 		{
 			peggyVAL.expr = peggyDollar[1].expr
 		}
 	case 14:
 		peggyDollar = peggyS[peggypt-2 : peggypt+1]
-		//line grammar.y:86
+		//line grammar.y:95
 		{
 			e, ok := peggyDollar[1].expr.(*Sequence)
 			if !ok {
@@ -605,115 +606,115 @@ peggydefault:
 		}
 	case 15:
 		peggyDollar = peggyS[peggypt-1 : peggypt+1]
-		//line grammar.y:94
+		//line grammar.y:103
 		{
 			peggyVAL.expr = peggyDollar[1].expr
 		}
 	case 16:
 		peggyDollar = peggyS[peggypt-3 : peggypt+1]
-		//line grammar.y:97
+		//line grammar.y:106
 		{
 			peggyVAL.expr = &LabelExpr{Label: peggyDollar[1].text, Expr: peggyDollar[3].expr}
 		}
 	case 17:
 		peggyDollar = peggyS[peggypt-1 : peggypt+1]
-		//line grammar.y:98
+		//line grammar.y:107
 		{
 			peggyVAL.expr = peggyDollar[1].expr
 		}
 	case 18:
 		peggyDollar = peggyS[peggypt-2 : peggypt+1]
-		//line grammar.y:101
+		//line grammar.y:110
 		{
 			peggyVAL.expr = &PredExpr{Expr: peggyDollar[2].expr, Loc: peggyDollar[1].loc}
 		}
 	case 19:
 		peggyDollar = peggyS[peggypt-2 : peggypt+1]
-		//line grammar.y:102
+		//line grammar.y:111
 		{
 			peggyVAL.expr = &PredExpr{Neg: true, Expr: peggyDollar[2].expr, Loc: peggyDollar[1].loc}
 		}
 	case 20:
 		peggyDollar = peggyS[peggypt-1 : peggypt+1]
-		//line grammar.y:103
+		//line grammar.y:112
 		{
 			peggyVAL.expr = peggyDollar[1].expr
 		}
 	case 21:
 		peggyDollar = peggyS[peggypt-2 : peggypt+1]
-		//line grammar.y:106
+		//line grammar.y:115
 		{
 			peggyVAL.expr = &RepExpr{Op: '*', Expr: peggyDollar[1].expr, Loc: peggyDollar[2].loc}
 		}
 	case 22:
 		peggyDollar = peggyS[peggypt-2 : peggypt+1]
-		//line grammar.y:107
+		//line grammar.y:116
 		{
 			peggyVAL.expr = &RepExpr{Op: '+', Expr: peggyDollar[1].expr, Loc: peggyDollar[2].loc}
 		}
 	case 23:
 		peggyDollar = peggyS[peggypt-2 : peggypt+1]
-		//line grammar.y:108
+		//line grammar.y:117
 		{
 			peggyVAL.expr = &OptExpr{Expr: peggyDollar[1].expr, Loc: peggyDollar[2].loc}
 		}
 	case 24:
 		peggyDollar = peggyS[peggypt-1 : peggypt+1]
-		//line grammar.y:109
+		//line grammar.y:118
 		{
 			peggyVAL.expr = peggyDollar[1].expr
 		}
 	case 25:
 		peggyDollar = peggyS[peggypt-3 : peggypt+1]
-		//line grammar.y:112
+		//line grammar.y:121
 		{
 			peggyVAL.expr = &SubExpr{Expr: peggyDollar[2].expr, Open: peggyDollar[1].loc, Close: peggyDollar[3].loc}
 		}
 	case 26:
 		peggyDollar = peggyS[peggypt-2 : peggypt+1]
-		//line grammar.y:113
+		//line grammar.y:122
 		{
 			peggyVAL.expr = &PredCode{Code: peggyDollar[2].text, Loc: peggyDollar[1].loc}
 		}
 	case 27:
 		peggyDollar = peggyS[peggypt-2 : peggypt+1]
-		//line grammar.y:114
+		//line grammar.y:123
 		{
 			peggyVAL.expr = &PredCode{Neg: true, Code: peggyDollar[2].text, Loc: peggyDollar[1].loc}
 		}
 	case 28:
 		peggyDollar = peggyS[peggypt-1 : peggypt+1]
-		//line grammar.y:115
+		//line grammar.y:124
 		{
 			peggyVAL.expr = &Any{Loc: peggyDollar[1].loc}
 		}
 	case 29:
 		peggyDollar = peggyS[peggypt-1 : peggypt+1]
-		//line grammar.y:116
+		//line grammar.y:125
 		{
 			peggyVAL.expr = &Ident{Name: peggyDollar[1].text}
 		}
 	case 30:
 		peggyDollar = peggyS[peggypt-1 : peggypt+1]
-		//line grammar.y:117
+		//line grammar.y:126
 		{
 			peggyVAL.expr = &Literal{Text: peggyDollar[1].text}
 		}
 	case 31:
 		peggyDollar = peggyS[peggypt-1 : peggypt+1]
-		//line grammar.y:118
+		//line grammar.y:127
 		{
 			peggyVAL.expr = peggyDollar[1].cclass
 		}
 	case 32:
 		peggyDollar = peggyS[peggypt-3 : peggypt+1]
-		//line grammar.y:119
+		//line grammar.y:128
 		{
 			peggylex.Error("unexpected end of file")
 		}
 	case 33:
 		peggyDollar = peggyS[peggypt-1 : peggypt+1]
-		//line grammar.y:123
+		//line grammar.y:132
 		{
 			loc := peggyDollar[1].text.Begin()
 			loc.Col++ // skip the open {.
@@ -724,15 +725,27 @@ peggydefault:
 			peggyVAL.text = peggyDollar[1].text
 		}
 	case 34:
-		peggyDollar = peggyS[peggypt-1 : peggypt+1]
-		//line grammar.y:135
+		peggyDollar = peggyS[peggypt-2 : peggypt+1]
+		//line grammar.y:144
 		{
-			loc := peggyDollar[1].text.Begin()
+			loc := peggyDollar[2].text.Begin()
 			loc.Col++ // skip the open {.
-			err := ParseGoBody(loc, peggyDollar[1].text.String())
+			err := ParseGoBody(loc, peggyDollar[2].text.String(), peggyDollar[1].text.String())
 			if err != nil {
 				peggylex.(*lexer).err = err
 			}
+			peggyVAL.action = &Action{Code: peggyDollar[2].text, ReturnType: peggyDollar[1].text}
+		}
+	case 35:
+		peggyDollar = peggyS[peggypt-2 : peggypt+1]
+		//line grammar.y:155
+		{
+			peggyVAL.text = peggyDollar[1].text
+		}
+	case 36:
+		peggyDollar = peggyS[peggypt-2 : peggypt+1]
+		//line grammar.y:156
+		{
 			peggyVAL.text = peggyDollar[1].text
 		}
 	}

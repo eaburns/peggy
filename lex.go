@@ -197,11 +197,15 @@ func ident(x *lexer) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		if !unicode.IsLetter(r) && !unicode.IsNumber(r) && r != '_' {
+		if !isIdentRune(r) {
 			return string(rs), x.back()
 		}
 		rs = append(rs, r)
 	}
+}
+
+func isIdentRune(r rune) bool {
+	return unicode.IsLetter(r) || unicode.IsNumber(r) || r == '_'
 }
 
 func code(x *lexer) (string, error) {

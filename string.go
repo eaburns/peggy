@@ -50,7 +50,11 @@ func (e *Choice) String() string {
 }
 
 func (e *Action) String() string {
-	return e.Expr.String() + "{" + e.Code.String() + "}"
+	t := e.ReturnType.String()
+	if strings.IndexFunc(t, func(r rune) bool { return !isIdentRune(r) }) >= 0 {
+		t = `"` + t + `"`
+	}
+	return e.Expr.String() + " " + t + ":{" + e.Code.String() + "}"
 }
 
 func (e *Sequence) String() string {
@@ -161,7 +165,11 @@ func (e *Choice) fullString() string {
 }
 
 func (e *Action) fullString() string {
-	return fmt.Sprintf("(%s{%s})", e.Expr.fullString(), e.Code)
+	t := e.ReturnType.String()
+	if strings.IndexFunc(t, func(r rune) bool { return !isIdentRune(r) }) >= 0 {
+		t = `"` + t + `"`
+	}
+	return fmt.Sprintf("(%s %s:{%s})", e.Expr.fullString(), t, e.Code)
 }
 
 func (e *Sequence) fullString() string {

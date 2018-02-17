@@ -85,6 +85,10 @@ type Expr interface {
 	// fullString returns the fully parenthesized string representation.
 	fullString() string
 
+	// Type returns the type of the expression in the Action Tree.
+	// This is the Go type associated with the expression.
+	Type() string
+
 	// CanFail returns whether the node can ever fail to parse.
 	// Nodes like * or ?, for example, can never fail.
 	// Parents of never-fail nodes needn't emit a failure branch,
@@ -102,6 +106,16 @@ type Choice struct{ Exprs []Expr }
 
 func (e *Choice) Begin() Loc { return e.Exprs[0].Begin() }
 func (e *Choice) End() Loc   { return e.Exprs[len(e.Exprs)-1].End() }
+
+func (e *Choice) Type() string {
+	t := e.Exprs[0].Type()
+	for _, e := range e.Exprs[1:] {
+		if e.Type() != t {
+			return "interface{}"
+		}
+	}
+	return t
+}
 
 func (e *Choice) CanFail() bool {
 	// A choice node can only fail if all of its branches can fail.
@@ -124,10 +138,14 @@ type Action struct {
 	//
 	// TODO: specify the environment under which the code is run.
 	Code Text
+
+	// ReturnType is the go type of the value returned by the action.
+	ReturnType Text
 }
 
 func (e *Action) Begin() Loc    { return e.Expr.Begin() }
 func (e *Action) End() Loc      { return e.Code.End() }
+func (e *Action) Type() string  { return e.ReturnType.String() }
 func (e *Action) CanFail() bool { return e.Expr.CanFail() }
 
 // A Sequence is a sequence of expressions.
@@ -135,6 +153,16 @@ type Sequence struct{ Exprs []Expr }
 
 func (e *Sequence) Begin() Loc { return e.Exprs[0].Begin() }
 func (e *Sequence) End() Loc   { return e.Exprs[len(e.Exprs)-1].End() }
+
+func (e *Sequence) Type() string {
+	t := e.Exprs[0].Type()
+	for _, e := range e.Exprs[1:] {
+		if e.Type() != t {
+			return "[]interface{}"
+		}
+	}
+	return "[]" + t
+}
 
 func (e *Sequence) CanFail() bool {
 	for _, s := range e.Exprs {
@@ -155,6 +183,7 @@ type LabelExpr struct {
 
 func (e *LabelExpr) Begin() Loc    { return e.Label.Begin() }
 func (e *LabelExpr) End() Loc      { return e.Expr.End() }
+func (e *LabelExpr) Type() string  { return e.Expr.Type() }
 func (e *LabelExpr) CanFail() bool { return e.Expr.CanFail() }
 
 // A PredExpr is a non-consuming predicate expression:
@@ -174,6 +203,7 @@ type PredExpr struct {
 func (e *PredExpr) Begin() Loc    { return e.Loc }
 func (e *PredExpr) End() Loc      { return e.Expr.End() }
 func (e *PredExpr) CanFail() bool { return e.Expr.CanFail() }
+func (e *PredExpr) Type() string  { return "bool" }
 
 // A RepExpr is a repetition expression, sepecifying whether the sub-expression
 // should be matched any number of times (*) or one or more times (+),
@@ -187,6 +217,7 @@ type RepExpr struct {
 
 func (e *RepExpr) Begin() Loc    { return e.Expr.Begin() }
 func (e *RepExpr) End() Loc      { return e.Loc }
+func (e *RepExpr) Type() string  { return "[]" + e.Expr.Type() }
 func (e *RepExpr) CanFail() bool { return e.Op == '+' && e.Expr.CanFail() }
 
 // An OptExpr is an optional expression, which may or may not be matched.
@@ -198,6 +229,7 @@ type OptExpr struct {
 
 func (e *OptExpr) Begin() Loc    { return e.Expr.Begin() }
 func (e *OptExpr) End() Loc      { return e.Loc }
+func (e *OptExpr) Type() string  { return "*" + e.Expr.Type() }
 func (e *OptExpr) CanFail() bool { return false }
 
 // An Ident is an identifier referring to the name of anothe rule,
@@ -212,6 +244,7 @@ type Ident struct {
 
 func (e *Ident) Begin() Loc    { return e.Name.Begin() }
 func (e *Ident) End() Loc      { return e.Name.End() }
+func (e *Ident) Type() string  { return e.rule.Expr.Type() }
 func (e *Ident) CanFail() bool { return true }
 
 // A SubExpr simply wraps an expression.
@@ -228,6 +261,7 @@ type SubExpr struct {
 
 func (e *SubExpr) Begin() Loc    { return e.Open }
 func (e *SubExpr) End() Loc      { return e.Close }
+func (e *SubExpr) Type() string  { return e.Expr.Type() }
 func (e *SubExpr) CanFail() bool { return e.Expr.CanFail() }
 
 // A PredCode is a predicate code expression,
@@ -247,6 +281,7 @@ type PredCode struct {
 
 func (e PredCode) Begin() Loc    { return e.Loc }
 func (e PredCode) End() Loc      { return e.Code.End() }
+func (e PredCode) Type() string  { return "bool" }
 func (e PredCode) CanFail() bool { return true }
 
 // A Literal matches a literal text string.
@@ -259,6 +294,7 @@ type Literal struct {
 
 func (e *Literal) Begin() Loc    { return e.Text.Begin() }
 func (e *Literal) End() Loc      { return e.Text.End() }
+func (e *Literal) Type() string  { return "string" }
 func (e *Literal) CanFail() bool { return true }
 
 // A CharClass matches a single rune from a set of acceptable
@@ -278,6 +314,7 @@ type CharClass struct {
 
 func (e *CharClass) Begin() Loc    { return e.Open }
 func (e *CharClass) End() Loc      { return e.Close }
+func (e *CharClass) Type() string  { return "string" }
 func (e *CharClass) CanFail() bool { return true }
 
 // Any matches any rune.
@@ -288,4 +325,5 @@ type Any struct {
 
 func (e *Any) Begin() Loc    { return e.Loc }
 func (e *Any) End() Loc      { return Loc{Line: e.Loc.Line, Col: e.Loc.Col + 1} }
+func (e *Any) Type() string  { return "string" }
 func (e *Any) CanFail() bool { return true }

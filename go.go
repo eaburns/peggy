@@ -35,8 +35,8 @@ func ParseGoFile(loc Loc, code string) error {
 
 // ParseGoBody parses go function body statements, returning any syntax errors.
 // The errors contain location information starting from the given Loc.
-func ParseGoBody(loc Loc, code string) error {
-	code = "package main; func p() {\n" + code + "}"
+func ParseGoBody(loc Loc, code, typ string) error {
+	code = "package main; func p() " + typ + " {\n" + code + "}"
 	_, err := parser.ParseFile(token.NewFileSet(), loc.File, code, 0)
 	if err == nil {
 		return nil

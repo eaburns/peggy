@@ -15,6 +15,7 @@ import "io"
 	cclass *CharClass
 	loc Loc
 	expr Expr
+	action *Action
 	rule Rule
 	rules []Rule
 	grammar Grammar
@@ -22,7 +23,8 @@ import "io"
 
 %type <grammar> Grammar
 %type <expr> Expr, ActExpr, SeqExpr, LabelExpr, PredExpr, RepExpr, Operand
-%type <text> GoPred GoAction Prelude
+%type <action> GoAction
+%type <text> GoPred GoType Prelude
 %type <rule> Rule
 %type <rules> Rules
 
@@ -81,7 +83,11 @@ Expr:
 |	ActExpr { $$ = $1 }
 
 ActExpr:
-	SeqExpr GoAction { $$ = &Action{ Expr: $1, Code: $2 } }
+	SeqExpr GoAction
+	{
+		$2.Expr = $1
+		$$ = $2
+	}
 |	SeqExpr { $$ = $1 }
 
 SeqExpr:
@@ -134,16 +140,20 @@ GoPred:
 	}
 
 GoAction:
-	_CODE
+	GoType _CODE
 	{
-		loc := $1.Begin()
+		loc := $2.Begin()
 		loc.Col++ // skip the open {.
-		err := ParseGoBody(loc, $1.String())
+		err := ParseGoBody(loc, $2.String(), $1.String() )
 		if err != nil {
 			peggylex.(*lexer).err = err
 		}
-		$$ = $1
+		$$ = &Action{ Code: $2, ReturnType: $1 }
 	}
+
+GoType:
+	_IDENT ':' { $$ = $1 }
+|	_STRING ':' { $$ = $1 }
 
 NewLine:
 	'\n' NewLine

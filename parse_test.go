@@ -220,21 +220,21 @@ func main() { fmt.Println("Hello, World") }
 	// Precedence.
 	{
 		Name:       "various precedences",
-		Input:      "A <- x:B*+ C?/(!D y:&E)*{c}/F !{p}",
-		FullString: "A <- ((((x:(((B)*)+)) ((C)?))/((((!(D)) (y:(&(E))))*){c}))/((F) (!{p})))",
-		String:     "A <- x:B*+ C?/(!D y:&E)*{c}/F !{p}",
+		Input:      "A <- x:B*+ C?/(!D y:&E)* T:{c}/F !{p}",
+		FullString: "A <- ((((x:(((B)*)+)) ((C)?))/((((!(D)) (y:(&(E))))*) T:{c}))/((F) (!{p})))",
+		String:     "A <- x:B*+ C?/(!D y:&E)* T:{c}/F !{p}",
 	},
 	{
 		Name:       "action < choice",
-		Input:      "A <- B{act}/C{act}",
-		FullString: "A <- (((B){act})/((C){act}))",
-		String:     "A <- B{act}/C{act}",
+		Input:      "A <- B T:{act}/C T:{act}",
+		FullString: "A <- (((B) T:{act})/((C) T:{act}))",
+		String:     "A <- B T:{act}/C T:{act}",
 	},
 	{
 		Name:       "sequence < action",
-		Input:      "A <- B C{act}",
-		FullString: "A <- (((B) (C)){act})",
-		String:     "A <- B C{act}",
+		Input:      "A <- B C T:{act}",
+		FullString: "A <- (((B) (C)) T:{act})",
+		String:     "A <- B C T:{act}",
 	},
 	{
 		Name:       "label < sequence",
@@ -277,6 +277,26 @@ D <- .*
 E <- Z*
 F <- "cde"*
 G <- [fgh]*`,
+	},
+
+	// Actions
+	{
+		Name:       "action with ident type",
+		Input:      `A <- "abc" T:{act}`,
+		FullString: `A <- (("abc") T:{act})`,
+		String:     `A <- "abc" T:{act}`,
+	},
+	{
+		Name:       "action with string type",
+		Input:      `A <- "abc" "interface{}":{act}`,
+		FullString: `A <- (("abc") "interface{}":{act})`,
+		String:     `A <- "abc" "interface{}":{act}`,
+	},
+	{
+		Name:       "action strip unnecessary quotes",
+		Input:      `A <- "abc" "XYZ":{act}`,
+		FullString: `A <- (("abc") XYZ:{act})`,
+		String:     `A <- "abc" XYZ:{act}`,
 	},
 
 	// Rune escaping
@@ -678,20 +698,20 @@ A <- B`,
 	{
 		Name: `bad action`,
 		// = instead of ==.
-		Input: "\nA <- B { if ( }",
-		Error: "^test.file:2.15",
+		Input: "\nA <- B T:{ if ( }",
+		Error: "^test.file:2.17",
 	},
 	{
 		Name: `bad multi-line action`,
 		// = instead of ==.
-		Input: "\nA <- B {\n	if ( }",
+		Input: "\nA <- B T:{\n	if ( }",
 		Error: "^test.file:3.7",
 	},
 	{
-		Name: `bad action, invalid nested func def`,
+		Name: `bad action: invalid nested func def`,
 		// = instead of ==.
-		Input: "\nA <- B { func f() int { return 1 } }",
-		Error: "^test.file:2.15",
+		Input: "\nA <- B T:{ func f() int { return 1 } }",
+		Error: "^test.file:2.17",
 	},
 
 	// I/O errors.

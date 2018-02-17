@@ -27,7 +27,7 @@ func TestCheck(t *testing.T) {
 			name: "various OK",
 			in: `A <- (G/B C)*
 B <- &{pred}*
-C <- !{pred}* { act }
+C <- !{pred}* T:{ act }
 D <- .* !B
 E <- C*
 F <- "cde"*

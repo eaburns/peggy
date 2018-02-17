@@ -134,10 +134,7 @@ func writeRule(w io.Writer, c Config, r *Rule) error {
 	if err != nil {
 		return err
 	}
-	if err := tmp.Execute(w, data); err != nil {
-		return err
-	}
-	return nil
+	return tmp.Execute(w, data)
 }
 
 type state struct {

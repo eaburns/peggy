@@ -732,48 +732,52 @@ A <- B`,
 
 func TestParse(t *testing.T) {
 	for _, test := range ParseTests {
-		in := testRuneScanner{strings.NewReader(test.Input)}
-		g, err := Parse(in, "test.file")
+		test := test
+		t.Run(test.Name, func(t *testing.T) {
+			t.Parallel()
+			in := testRuneScanner{strings.NewReader(test.Input)}
+			g, err := Parse(in, "test.file")
 
-		if test.Error != "" {
-			if err == nil {
-				t.Log(pretty.String(g.Rules))
-				t.Errorf("%s: Parse(%q) ok, but expected error matching %q",
-					test.Name, test.Input, test.Error)
-				continue
+			if test.Error != "" {
+				if err == nil {
+					t.Log(pretty.String(g.Rules))
+					t.Errorf("Parse(%q) ok, but expected error matching %q",
+						test.Input, test.Error)
+					return
+				}
+				re := regexp.MustCompile(test.Error)
+				if !re.MatchString(err.Error()) {
+					t.Errorf("Parse(%q) err=%q, but expected to match %q",
+						test.Input, err.Error(), test.Error)
+					return
+				}
+				return
 			}
-			re := regexp.MustCompile(test.Error)
-			if !re.MatchString(err.Error()) {
-				t.Errorf("%s: Parse(%q) err=%q, but expected to match %q",
-					test.Name, test.Input, err.Error(), test.Error)
-				continue
-			}
-			continue
-		}
 
-		if err != nil {
-			t.Errorf("%s: Parse(%q) failed: %s", test.Name, test.Input, err)
-			continue
-		}
-		var pre string
-		if g.Prelude != nil {
-			pre = g.Prelude.String()
-		}
-		if pre != test.Prelude {
-			t.Errorf("%s: Parse(%q).Prelude=\n%s\nwant:\n%s",
-				test.Name, test.Input, pre, test.Prelude)
-			continue
-		}
-		if s := FullString(g.Rules); s != test.FullString {
-			t.Errorf("%s: Parse(%q)\nfull string:\n%q\nwant:\n%q",
-				test.Name, test.Input, s, test.FullString)
-			continue
-		}
-		if s := String(g.Rules); s != test.String {
-			t.Errorf("%s: Parse(%q)\nstring:\n%q\nwant:\n%q",
-				test.Name, test.Input, s, test.String)
-			continue
-		}
+			if err != nil {
+				t.Errorf("Parse(%q) failed: %s", test.Input, err)
+				return
+			}
+			var pre string
+			if g.Prelude != nil {
+				pre = g.Prelude.String()
+			}
+			if pre != test.Prelude {
+				t.Errorf("Parse(%q).Prelude=\n%s\nwant:\n%s",
+					test.Input, pre, test.Prelude)
+				return
+			}
+			if s := FullString(g.Rules); s != test.FullString {
+				t.Errorf("Parse(%q)\nfull string:\n%q\nwant:\n%q",
+					test.Input, s, test.FullString)
+				return
+			}
+			if s := String(g.Rules); s != test.String {
+				t.Errorf("Parse(%q)\nstring:\n%q\nwant:\n%q",
+					test.Input, s, test.String)
+				return
+			}
+		})
 	}
 }
 

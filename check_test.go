@@ -79,24 +79,28 @@ G <- [fgh]*`,
 		},
 	}
 	for _, test := range tests {
-		in := strings.NewReader(test.in)
-		g, err := Parse(in, "test.file")
-		if err != nil {
-			t.Errorf("%s: Parse(%q, _)=_, %v, want _,nil", test.name, test.in, err)
-			continue
-		}
-		err = Check(g)
-		if test.err == "" {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			in := strings.NewReader(test.in)
+			g, err := Parse(in, "test.file")
 			if err != nil {
-				t.Errorf("%s: Check(%q)=%v, want nil", test.name, test.in, err)
+				t.Errorf("Parse(%q, _)=_, %v, want _,nil", test.in, err)
+				return
 			}
-			continue
-		}
-		re := regexp.MustCompile(test.err)
-		if !re.MatchString(err.Error()) {
-			t.Errorf("%s: Check(%q)=%v, but expected to match %q",
-				test.name, test.in, err.Error(), test.err)
-			continue
-		}
+			err = Check(g)
+			if test.err == "" {
+				if err != nil {
+					t.Errorf("Check(%q)=%v, want nil", test.in, err)
+				}
+				return
+			}
+			re := regexp.MustCompile(test.err)
+			if !re.MatchString(err.Error()) {
+				t.Errorf("Check(%q)=%v, but expected to match %q",
+					test.in, err.Error(), test.err)
+				return
+			}
+		})
 	}
 }

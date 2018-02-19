@@ -6,6 +6,8 @@
 
 package main
 
+import "sort"
+
 // Check does semantic analysis of the rules,
 // setting bookkeeping needed to later generate the parser,
 // returning any errors encountered in order of their begin location.
@@ -20,61 +22,75 @@ func Check(grammar *Grammar) error {
 		}
 		ruleMap[name] = r
 	}
+	var labels []map[string]*LabelExpr
 	for i := range grammar.Rules {
-		check(&grammar.Rules[i], ruleMap, &errs)
+		ls := check(&grammar.Rules[i], ruleMap, &errs)
+		labels = append(labels, ls)
+	}
+	for i, ls := range labels {
+		rule := &grammar.Rules[i]
+		for name, expr := range ls {
+			l := Label{Name: name, Type: expr.Type(), N: expr.N}
+			rule.Labels = append(rule.Labels, l)
+		}
 	}
 	return errs.ret()
 }
 
-func check(rule *Rule, rules map[string]*Rule, errs *Errors) {
-	labels := make(map[string]bool)
+func check(rule *Rule, rules map[string]*Rule, errs *Errors) map[string]*LabelExpr {
+	labels := make(map[string]*LabelExpr)
 	rule.Expr.check(rules, labels, errs)
-	for label := range labels {
-		rule.Labels = append(rule.Labels, label)
-	}
+	return labels
 }
 
-func (e *Choice) check(rules map[string]*Rule, labels map[string]bool, errs *Errors) {
+func (e *Choice) check(rules map[string]*Rule, labels map[string]*LabelExpr, errs *Errors) {
 	for _, sub := range e.Exprs {
 		sub.check(rules, labels, errs)
 	}
 }
 
-func (e *Action) check(rules map[string]*Rule, labels map[string]bool, errs *Errors) {
+func (e *Action) check(rules map[string]*Rule, labels map[string]*LabelExpr, errs *Errors) {
 	e.Expr.check(rules, labels, errs)
+	for _, l := range labels {
+		e.Labels = append(e.Labels, l)
+	}
+	sort.Slice(e.Labels, func(i, j int) bool {
+		return e.Labels[i].Label.String() < e.Labels[j].Label.String()
+	})
 }
 
-func (e *Sequence) check(rules map[string]*Rule, labels map[string]bool, errs *Errors) {
+func (e *Sequence) check(rules map[string]*Rule, labels map[string]*LabelExpr, errs *Errors) {
 	for _, sub := range e.Exprs {
 		sub.check(rules, labels, errs)
 	}
 }
 
-func (e *LabelExpr) check(rules map[string]*Rule, labels map[string]bool, errs *Errors) {
+func (e *LabelExpr) check(rules map[string]*Rule, labels map[string]*LabelExpr, errs *Errors) {
 	e.Expr.check(rules, labels, errs)
-	if labels[e.Label.String()] {
+	if _, ok := labels[e.Label.String()]; ok {
 		errs.add(e.Label, "label %s redefined", e.Label.String())
 	}
-	labels[e.Label.String()] = true
+	e.N = len(labels)
+	labels[e.Label.String()] = e
 }
 
-func (e *PredExpr) check(rules map[string]*Rule, labels map[string]bool, errs *Errors) {
+func (e *PredExpr) check(rules map[string]*Rule, labels map[string]*LabelExpr, errs *Errors) {
 	e.Expr.check(rules, labels, errs)
 }
 
-func (e *RepExpr) check(rules map[string]*Rule, labels map[string]bool, errs *Errors) {
+func (e *RepExpr) check(rules map[string]*Rule, labels map[string]*LabelExpr, errs *Errors) {
 	e.Expr.check(rules, labels, errs)
 }
 
-func (e *OptExpr) check(rules map[string]*Rule, labels map[string]bool, errs *Errors) {
+func (e *OptExpr) check(rules map[string]*Rule, labels map[string]*LabelExpr, errs *Errors) {
 	e.Expr.check(rules, labels, errs)
 }
 
-func (e *SubExpr) check(rules map[string]*Rule, labels map[string]bool, errs *Errors) {
+func (e *SubExpr) check(rules map[string]*Rule, labels map[string]*LabelExpr, errs *Errors) {
 	e.Expr.check(rules, labels, errs)
 }
 
-func (e *Ident) check(rules map[string]*Rule, _ map[string]bool, errs *Errors) {
+func (e *Ident) check(rules map[string]*Rule, _ map[string]*LabelExpr, errs *Errors) {
 	r, ok := rules[e.Name.String()]
 	if !ok {
 		errs.add(e, "rule %s undefined", e.Name.String())
@@ -83,10 +99,17 @@ func (e *Ident) check(rules map[string]*Rule, _ map[string]bool, errs *Errors) {
 	}
 }
 
-func (e *PredCode) check(map[string]*Rule, map[string]bool, *Errors) {}
+func (e *PredCode) check(_ map[string]*Rule, labels map[string]*LabelExpr, _ *Errors) {
+	for _, l := range labels {
+		e.Labels = append(e.Labels, l)
+	}
+	sort.Slice(e.Labels, func(i, j int) bool {
+		return e.Labels[i].Label.String() < e.Labels[j].Label.String()
+	})
+}
 
-func (e *Literal) check(map[string]*Rule, map[string]bool, *Errors) {}
+func (e *Literal) check(map[string]*Rule, map[string]*LabelExpr, *Errors) {}
 
-func (e *CharClass) check(map[string]*Rule, map[string]bool, *Errors) {}
+func (e *CharClass) check(map[string]*Rule, map[string]*LabelExpr, *Errors) {}
 
-func (e *Any) check(map[string]*Rule, map[string]bool, *Errors) {}
+func (e *Any) check(map[string]*Rule, map[string]*LabelExpr, *Errors) {}

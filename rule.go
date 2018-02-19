@@ -34,7 +34,17 @@ type Rule struct {
 	Expr Expr
 
 	// Labels is the set of all label names in the rule's expression.
-	Labels []string
+	Labels []Label
+}
+
+// A Label is the name and type of a labeled sub-expression.
+type Label struct {
+	// Name is the name of the label.
+	Name string
+	// Type is the Go type of the labeled sub-expression.
+	Type string
+	// N is the label's unique integer within its containing Rule.
+	N int
 }
 
 func (e Rule) Begin() Loc { return e.Name.Begin() }
@@ -98,7 +108,7 @@ type Expr interface {
 	// check does semantic analysis of the expression,
 	// setting any bookkeeping needed for later code generation,
 	// and returning the first error encountered if any.
-	check(rules map[string]*Rule, labels map[string]bool, errs *Errors)
+	check(rules map[string]*Rule, labels map[string]*LabelExpr, errs *Errors)
 }
 
 // A Choice is an ordered choice between expressions.
@@ -141,6 +151,9 @@ type Action struct {
 
 	// ReturnType is the go type of the value returned by the action.
 	ReturnType Text
+
+	// Labels are the labels that are in scope of this action.
+	Labels []*LabelExpr
 }
 
 func (e *Action) Begin() Loc    { return e.Expr.Begin() }
@@ -179,6 +192,9 @@ type LabelExpr struct {
 	// Label is the text of the label, not including the :.
 	Label Text
 	Expr  Expr
+	// N is a small integer assigned to this label
+	// that is unique within the containing Rule.
+	N int
 }
 
 func (e *LabelExpr) Begin() Loc    { return e.Label.Begin() }
@@ -277,6 +293,9 @@ type PredCode struct {
 	Neg bool
 	// Loc is the location of the operator, & or !.
 	Loc Loc
+
+	// Labels are the labels that are in scope of this action.
+	Labels []*LabelExpr
 }
 
 func (e PredCode) Begin() Loc    { return e.Loc }

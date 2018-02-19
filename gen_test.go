@@ -36,15 +36,6 @@ type test struct {
 
 var testCases = []test{
 	/*
-		// BUG: Labels on the func call stack should be an array,
-		// using a name of our choosing.
-		// The user-defined label name should be an argument of a function
-		// containing their code.
-		// The argument has their chosen name.
-		{
-			Name:    "label name conflicts with parser internal variable",
-			Grammar: `A <- start:&'abc'`,
-		},
 		// BUG: We shouldn't allow unused labels.
 		// This would be caught if we did a type check
 		// before gofmt on the output.
@@ -54,6 +45,21 @@ var testCases = []test{
 			Input:   "abc",
 		},
 	*/
+	{
+		// "start" is an internal identifier name. There should be no conflict.
+		Name:    "label name conflicts with parser internal variable",
+		Grammar: `A <- start:'abc' &{ start == "abc" } 'xyz'`,
+		Input:   "abcxyz",
+		Pos:     len("abcxyz"),
+		Node: &peg.Node{
+			Name: "A",
+			Text: "abcxyz",
+			Kids: []*peg.Node{
+				{Text: "abc"},
+				{Text: "xyz"},
+			},
+		},
+	},
 	{
 		Name:    "label pred expr",
 		Grammar: `A <- L:&'abc' &{L == ""} "abc"`,

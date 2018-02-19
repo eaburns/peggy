@@ -111,6 +111,14 @@ func writeRule(w io.Writer, c Config, r *Rule) error {
 				FailPass: true,
 			}
 		},
+		"makeActionState": func(r *Rule) state {
+			return state{
+				Config:     c,
+				Rule:       r,
+				n:          new(int),
+				ActionPass: true,
+			}
+		},
 	}
 	data := map[string]interface{}{
 		"Config": c,
@@ -125,6 +133,7 @@ func writeRule(w io.Writer, c Config, r *Rule) error {
 		{"ruleNode", ruleNode},
 		{"ruleFail", ruleFail},
 		{"stringLabels", stringLabels},
+		{"ruleAction", ruleAction},
 	} {
 		name, text := ts[0], ts[1]
 		tmp, err = tmp.New(name).Funcs(funcs).Parse(text)
@@ -147,6 +156,8 @@ type state struct {
 	NodePass bool
 	// FailPass indicates whether to generate the error pass.
 	FailPass bool
+	// ActionPass indicates whether to generate the action pass.
+	ActionPass bool
 }
 
 func (s state) id(str string) string {
@@ -190,6 +201,7 @@ var declsTemplate = `
 		deltaErr []{{$pre}}Rules
 		node map[{{$pre}}key]*peg.Node
 		fail map[{{$pre}}key]*peg.Fail
+		act map[{{$pre}}key]interface{}
 		lastFail int
 		data interface{}
 	}
@@ -206,6 +218,7 @@ var declsTemplate = `
 			deltaErr: make([]{{$pre}}Rules, len(text)+1),
 			node: make(map[{{$pre}}key]*peg.Node),
 			fail: make(map[{{$pre}}key]*peg.Fail),
+			act: make(map[{{$pre}}key]interface{}),
 		}
 	}
 
@@ -303,6 +316,9 @@ func gen(parentState state, expr Expr, fail string) (string, error) {
 // On the node tree pass these variables are also defined:
 // 	node is the *peg.Node of the Rule being parsed.
 //
+// On the action tree pass these variables are also defined:
+// 	node is an interface{} containing the current action tree node value.
+//
 // On the fail tree pass these variables are also defined:
 // 	failure is the *peg.Fail of the Rule being parsed.
 // 	errPos is the position before which Fail nodes are not generated.
@@ -326,17 +342,13 @@ var ruleTemplate = `
 	{{template "ruleAccepts" $}}
 	{{template "ruleNode" $}}
 	{{template "ruleFail" $}}
+	{{template "ruleAction" $}}
 `
 
 var stringLabels = `
 	{{- if $.Rule.Labels -}}
-		var {{range $i, $l := $.Rule.Labels -}}
-			{{if $i}}, {{end}}{{$l}}
-		{{- end}} string
-		{{/* Mark the labels as used to prevent go compile errors if unused. */}}
-		{{- range $l := $.Rule.Labels -}}
-			{{$l}} = {{$l}}
-		{{end}}
+		var labels [{{len $.Rule.Labels}}]string
+		labels = labels
 	{{- end -}}
 `
 
@@ -451,6 +463,43 @@ var ruleFail = `
 	}
 `
 
+var ruleAction = `
+	{{$pre := $.Config.Prefix -}}
+	{{- $name := $.Rule.Name.String -}}
+	{{- $type := $.Rule.Expr.Type -}}
+	func {{$pre}}{{$name}}Action(parser *{{$pre}}Parser, start int) (int, *{{$type}}) {
+		{{template "stringLabels" $}}
+		{{if $.Rule.Labels -}}
+			{{range $l := $.Rule.Labels -}}
+				var label{{$l.N}} {{$l.Type}}
+				label{{$l.N}} = label{{$l.N}}
+			{{end}}
+		{{- end -}}
+		dp := parser.deltaPos[start].{{$name}}
+		if dp < 0 {
+			return -1, nil
+		}
+		key := {{$pre}}key{start: start, name: {{quote $name}}}
+		node := parser.act[key]
+		if node != nil {
+			n, _ := node.({{$type}})
+			return start + int(dp - 1), &n
+		}
+		pos := start
+		{{gen (makeActionState $.Rule) $.Rule.Expr "fail" -}}
+
+		parser.act[key] = node
+		{
+			n, _ := node.({{$type}})
+			return pos,  &n
+		}
+	{{if $.Rule.Expr.CanFail -}}
+	fail:
+		return -1, nil
+	{{end -}}
+	}
+`
+
 var choiceTemplate = `// {{$.Expr.String}}
 {
 	{{- $ok := id "ok" -}}
@@ -480,13 +529,46 @@ var choiceTemplate = `// {{$.Expr.String}}
 }
 `
 
-var actionTemplate = `// {{$.Expr.String}}
+var actionTemplate = `// action
 	{{gen $ $.Expr.Expr $.Fail -}}
+	{{if $.ActionPass -}}
+	{{/* TODO: don't put the func in the scope of the rule. */ -}}
+	node = func(
+		{{- if $.Expr.Labels -}}
+			{{range $lexpr := $.Expr.Labels -}}
+				{{$lexpr.Label}} {{$lexpr.Type}},
+			{{- end -}}
+		{{- end -}}) {{$.Expr.Type}} { {{$.Expr.Code}} }(
+		{{- if $.Expr.Labels -}}
+			{{range $lexpr := $.Expr.Labels -}}
+				label{{$lexpr.N}},
+			{{- end -}}
+		{{- end -}}
+	)
+	{{end -}}
 `
 
 var sequenceTemplate = `// {{$.Expr.String}}
-	{{range $subExpr := $.Expr.Exprs -}}
+	{{$nodes := id "nodes" -}}
+	{{if $.ActionPass -}}
+		{
+		var {{$nodes}} {{$.Expr.Type}}
+	{{end -}}
+	{{range $i, $subExpr := $.Expr.Exprs -}}
 		{{gen $ $subExpr $.Fail -}}
+		{{if $.ActionPass -}}
+			{
+				n, _ := node.({{$subExpr.Type}})
+				{{if last $i $.Expr.Exprs -}}
+					node = append({{$nodes}}, n)
+				{{else -}}
+					{{$nodes}} = append({{$nodes}}, n)
+				{{end -}}
+			}
+		{{end -}}	
+	{{end -}}
+	{{if $.ActionPass -}}
+		}
 	{{end -}}
 `
 
@@ -497,7 +579,13 @@ var labelExprTemplate = `// {{$.Expr.String}}
 	{
 		{{$pos0}} := pos
 		{{gen $ $subExpr $.Fail -}}
-		{{$name}} = parser.text[{{$pos0}}:pos]
+		labels[{{$.Expr.N}}] = parser.text[{{$pos0}}:pos]
+		{{if $.ActionPass -}}
+			{
+				n, _ := node.({{$.Expr.Type}})
+				label{{$.Expr.N}} = n
+			}
+		{{end -}}
 	}
 `
 
@@ -533,6 +621,8 @@ var predExprTemplate = `// {{$.Expr.String}}
 					Want: {{quote $.Expr.String}},
 				})
 			}
+		{{else if $.ActionPass -}}
+			node = false
 		{{end -}}
 		goto {{$.Fail}}
 	{{else -}}
@@ -551,6 +641,8 @@ var predExprTemplate = `// {{$.Expr.String}}
 						Want: {{quote $.Expr.String}},
 					})
 				}
+			{{else if $.ActionPass -}}
+				node = false
 			{{end -}}
 			goto {{$.Fail}}
 	{{end -}}
@@ -563,6 +655,8 @@ var predExprTemplate = `// {{$.Expr.String}}
 		node.Kids = node.Kids[:{{$nkids}}]
 	{{else if $.FailPass -}}
 		failure.Kids = failure.Kids[:{{$nkids}}]
+	{{else if $.ActionPass -}}
+		node = true
 	{{end -}}
 }
 `
@@ -570,10 +664,21 @@ var predExprTemplate = `// {{$.Expr.String}}
 var repExprTemplate = `// {{$.Expr.String}}
 	{{$nkids := id "nkids" -}}
 	{{$pos0 := id "pos" -}}
+	{{$nodes := id "nodes" -}}
 	{{- $fail := id "fail" -}}
 	{{- $subExpr := $.Expr.Expr -}}
+	{{if $.ActionPass -}}
+		{
+		var {{$nodes}} {{$.Expr.Type}}
+	{{end -}}
 	{{if eq $.Expr.Op '+' -}}
 		{{gen $ $subExpr $.Fail -}}
+		{{if $.ActionPass -}}
+			{
+				n, _ := node.({{$subExpr.Type}})
+				{{$nodes}} = append({{$nodes}}, n)
+			}
+		{{end -}}
 	{{end -}}
 	for {
 		{{if $.NodePass -}}
@@ -581,6 +686,12 @@ var repExprTemplate = `// {{$.Expr.String}}
 		{{end -}}
 		{{$pos0}} := pos
 		{{gen $ $subExpr $fail -}}
+		{{if $.ActionPass -}}
+			{
+				n, _ := node.({{$subExpr.Type}})
+				{{$nodes}} = append({{$nodes}}, n)
+			}
+		{{end -}}
 		continue
 		{{$fail}}:
 			{{if $.NodePass -}}
@@ -589,6 +700,10 @@ var repExprTemplate = `// {{$.Expr.String}}
 			pos = {{$pos0}}
 			break
 	}
+	{{if $.ActionPass -}}
+		node = {{$nodes}}
+		}
+	{{end -}}
 `
 
 var optExprTemplate = `// {{$.Expr.String}}
@@ -604,10 +719,18 @@ var optExprTemplate = `// {{$.Expr.String}}
 		{{$pos0}} := pos
 		{{gen $ $subExpr $fail -}}
 		{{- $ok := id "ok" -}}
+		{{if $.ActionPass -}}
+			{
+				n, _ := node.({{$subExpr.Type}})
+				node = &n
+			}
+		{{end -}}
 		goto {{$ok}}
 		{{$fail}}:
 			{{if $.NodePass -}}
 				node.Kids = node.Kids[:{{$nkids}}]
+			{{else if $.ActionPass -}}
+				node = nil
 			{{end -}}
 			pos = {{$pos0}}
 		{{$ok}}:
@@ -643,8 +766,19 @@ var subExprTemplate = `// {{$.Expr.String}}
 // NOTE: kids are OK for actions,
 // because actions are only to be called by the Node pass
 // on a successful parse.
-var predCodeTemplate = `// {{$.Expr.String}}
-	if {{if not $.Expr.Neg}}!{{end}}({{$.Expr.Code.String}}) {
+var predCodeTemplate = `// pred code
+	if ok := func(
+		{{- if $.Expr.Labels -}}
+			{{range $lexpr := $.Expr.Labels -}}
+				{{$lexpr.Label}} string,
+			{{- end -}}
+		{{- end -}}) bool { return {{$.Expr.Code}} }(
+		{{- if $.Expr.Labels -}}
+			{{range $lexpr := $.Expr.Labels -}}
+				labels[{{$lexpr.N}}],
+			{{- end -}}
+		{{- end -}}
+	); {{if not $.Expr.Neg}}!{{end}}ok {
 		{{if $.AcceptsPass -}}
 			{{- $pre := $.Config.Prefix -}}
 			perr = {{$pre}}max(perr, pos)
@@ -656,8 +790,14 @@ var predCodeTemplate = `// {{$.Expr.String}}
 				})
 			}
 		{{end -}}
+		{{if $.ActionPass -}}
+			node = false
+		{{end -}}
 		goto {{$.Fail}}
 	}
+	{{if $.ActionPass -}}
+		node = true
+	{{end -}}
 `
 
 var identTemplate = `// {{$.Expr.String}}
@@ -689,6 +829,15 @@ var identTemplate = `// {{$.Expr.String}}
 			}
 			pos = p
 		}
+	{{else if $.ActionPass -}}
+		if p, kid := {{$pre}}{{$name}}Action(parser, pos); kid == nil {
+			goto {{$.Fail}}
+		} else {
+			{{/* Assign through non-interface n for type checking. */ -}}
+			var n {{$.Expr.Type}} = *kid
+			node = n
+			pos = p
+		}
 	{{end -}}
 `
 
@@ -709,9 +858,11 @@ var literalTemplate = `// {{$.Expr.String}}
 		{{end -}}
 		goto {{$.Fail}}
 	}
+	{{$pre := $.Config.Prefix -}}
 	{{if $.NodePass -}}
-		{{$pre := $.Config.Prefix -}}
 		node.Kids = append(node.Kids, {{$pre}}leaf(parser, pos, pos + {{$n}}))
+	{{else if $.ActionPass -}}
+		node = parser.text[pos:pos+{{$n}}]
 	{{end -}}
 	{{if eq $n 1 -}}
 		pos++
@@ -737,9 +888,11 @@ var anyTemplate = `// {{$.Expr.String}}
 		{{end -}}
 		goto {{$.Fail}}
 	} else {
+		{{$pre := $.Config.Prefix -}}
 		{{if $.NodePass -}}
-			{{$pre := $.Config.Prefix -}}
 			node.Kids = append(node.Kids, {{$pre}}leaf(parser, pos, pos + w))
+		{{else if $.ActionPass -}}
+			node = parser.text[pos:pos+w]
 		{{end -}}
 		pos += w
 	}
@@ -788,9 +941,12 @@ var charClassTemplate = `// {{$.Expr.String}}
 		{{end -}}
 		goto {{$.Fail}}
 	} else {
+		{{$pre := $.Config.Prefix -}}
 		{{if $.NodePass -}}
 			{{$pre := $.Config.Prefix -}}
 			node.Kids = append(node.Kids, {{$pre}}leaf(parser, pos, pos + w))
+		{{else if $.ActionPass -}}
+			node = parser.text[pos:pos+w]
 		{{end -}}
 		pos += w
 	}

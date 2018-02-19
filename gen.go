@@ -116,25 +116,23 @@ func writeRule(w io.Writer, c Config, r *Rule) error {
 		"Config": c,
 		"Rule":   r,
 	}
-	tmp, err := template.New("ruleAccepts").Funcs(funcs).Parse(ruleAccepts)
+	tmp, err := template.New("rule").Parse(ruleTemplate)
 	if err != nil {
 		return err
 	}
-	if err := tmp.Execute(w, data); err != nil {
-		return err
+	for _, ts := range [][2]string{
+		{"ruleAccepts", ruleAccepts},
+		{"ruleNode", ruleNode},
+		{"ruleFail", ruleFail},
+		{"stringLabels", stringLabels},
+	} {
+		name, text := ts[0], ts[1]
+		tmp, err = tmp.New(name).Funcs(funcs).Parse(text)
+		if err != nil {
+			return err
+		}
 	}
-	tmp, err = template.New("ruleNode").Funcs(funcs).Parse(ruleNode)
-	if err != nil {
-		return err
-	}
-	if err := tmp.Execute(w, data); err != nil {
-		return err
-	}
-	tmp, err = template.New("ruleFail").Funcs(funcs).Parse(ruleFail)
-	if err != nil {
-		return err
-	}
-	return tmp.Execute(w, data)
+	return tmp.ExecuteTemplate(w, "rule", data)
 }
 
 type state struct {
@@ -310,6 +308,7 @@ func gen(parentState state, expr Expr, fail string) (string, error) {
 // 	errPos is the position before which Fail nodes are not generated.
 var templates = map[reflect.Type]string{
 	reflect.TypeOf(&Choice{}):    choiceTemplate,
+	reflect.TypeOf(&Action{}):    actionTemplate,
 	reflect.TypeOf(&Sequence{}):  sequenceTemplate,
 	reflect.TypeOf(&LabelExpr{}): labelExprTemplate,
 	reflect.TypeOf(&PredExpr{}):  predExprTemplate,
@@ -323,15 +322,29 @@ var templates = map[reflect.Type]string{
 	reflect.TypeOf(&CharClass{}): charClassTemplate,
 }
 
+var ruleTemplate = `
+	{{template "ruleAccepts" $}}
+	{{template "ruleNode" $}}
+	{{template "ruleFail" $}}
+`
+
+var stringLabels = `
+	{{- if $.Rule.Labels -}}
+		var {{range $i, $l := $.Rule.Labels -}}
+			{{if $i}}, {{end}}{{$l}}
+		{{- end}} string
+		{{/* Mark the labels as used to prevent go compile errors if unused. */}}
+		{{- range $l := $.Rule.Labels -}}
+			{{$l}} = {{$l}}
+		{{end}}
+	{{- end -}}
+`
+
 var ruleAccepts = `
 	{{$pre := $.Config.Prefix -}}
 	{{- $name := $.Rule.Name.String -}}
 	func {{$pre}}{{$name}}Accepts(parser *{{$pre}}Parser, start int) (deltaPos, deltaErr int) {
-		{{if $.Rule.Labels -}}
-			var {{range $i, $l := $.Rule.Labels -}}
-				{{if $i}}, {{end}}{{$l}}
-			{{- end}} string
-		{{end -}}
+		{{template "stringLabels" $}}
 		if dp := parser.deltaPos[start].{{$name}}; dp != 0 {
 			de := parser.deltaErr[start].{{$name}} - 1
 			if dp > 0 {
@@ -366,11 +379,7 @@ var ruleNode = `
 	{{$pre := $.Config.Prefix -}}
 	{{- $name := $.Rule.Name.String -}}
 	func {{$pre}}{{$name}}Node(parser *{{$pre}}Parser, start int) (int, *peg.Node) {
-		{{if $.Rule.Labels -}}
-			var {{range $i, $l := $.Rule.Labels -}}
-				{{if $i}}, {{end}}{{$l}}
-			{{- end}} string
-		{{end -}}
+		{{template "stringLabels" $}}
 		dp := parser.deltaPos[start].{{$name}}
 		if dp < 0 {
 			return -1, nil
@@ -398,11 +407,7 @@ var ruleFail = `
 	{{$pre := $.Config.Prefix -}}
 	{{- $name := $.Rule.Name.String -}}
 	func {{$pre}}{{$name}}Fail(parser *{{$pre}}Parser, start, errPos int) (int, *peg.Fail) {
-		{{if $.Rule.Labels -}}
-			var {{range $i, $l := $.Rule.Labels -}}
-				{{if $i}}, {{end}}{{$l}}
-			{{- end}} string
-		{{end -}}
+		{{template "stringLabels" $}}
 		if start > parser.lastFail {
 			return -1, &peg.Fail{}
 		}
@@ -473,6 +478,10 @@ var choiceTemplate = `// {{$.Expr.String}}
 	{{end -}}
 	{{$ok}}:
 }
+`
+
+var actionTemplate = `// {{$.Expr.String}}
+	{{gen $ $.Expr.Expr $.Fail -}}
 `
 
 var sequenceTemplate = `// {{$.Expr.String}}

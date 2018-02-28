@@ -180,8 +180,8 @@ func main() { fmt.Println("Hello, World") }
 	{
 		Name:       "^ character class",
 		Input:      `A <- [^^abc\nxyzαβξ]`,
-		FullString: `A <- ([^^abc\nxyzαβξ])`,
-		String:     `A <- [^^abc\nxyzαβξ]`,
+		FullString: `A <- ([^\^abc\nxyzαβξ])`,
+		String:     `A <- [^\^abc\nxyzαβξ]`,
 	},
 	{
 		Name:       "character class, delimiters",
@@ -190,10 +190,17 @@ func main() { fmt.Println("Hello, World") }
 		String:     `A <- [[\]]`,
 	},
 	{
+		// ^ should only negate the class if it's at the beginning
+		Name:       "character class, non-first^",
+		Input:      `A <- [abc^]`,
+		FullString: `A <- ([abc\^])`,
+		String:     `A <- [abc\^]`,
+	},
+	{
 		Name:       "character class, escaping",
-		Input:      `A <- [\a] [\b] [\f] [\n] [\r] [\t] [\v] [\\] [\-] [\]] [\101] [\x41] [\u0041] [\U00000041] [\aa\b] [a\ab]`,
-		FullString: `A <- (((((((((((((((([\a]) ([\b])) ([\f])) ([\n])) ([\r])) ([\t])) ([\v])) ([\\])) ([\-])) ([\]])) ([A])) ([A])) ([A])) ([A])) ([\aa\b])) ([a\ab]))`,
-		String:     `A <- [\a] [\b] [\f] [\n] [\r] [\t] [\v] [\\] [\-] [\]] [A] [A] [A] [A] [\aa\b] [a\ab]`,
+		Input:      `A <- [\a] [\b] [\f] [\n] [\r] [\t] [\v] [\\] [\-] [\]] [\101] [\x41] [\u0041] [\U00000041] [\aa\b] [a\ab] [\^]`,
+		FullString: `A <- ((((((((((((((((([\a]) ([\b])) ([\f])) ([\n])) ([\r])) ([\t])) ([\v])) ([\\])) ([\-])) ([\]])) ([A])) ([A])) ([A])) ([A])) ([\aa\b])) ([a\ab])) ([\^]))`,
+		String:     `A <- [\a] [\b] [\f] [\n] [\r] [\t] [\v] [\\] [\-] [\]] [A] [A] [A] [A] [\aa\b] [a\ab] [\^]`,
 	},
 
 	// Associativity.

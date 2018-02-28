@@ -118,6 +118,8 @@ func (e *CharClass) String() string {
 
 func charClassEsc(r rune) string {
 	switch r {
+	case '^':
+		return `\^`
 	case '-':
 		return `\-`
 	case ']':

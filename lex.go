@@ -294,7 +294,7 @@ loop:
 			span = true
 
 		default:
-			if !c.Neg && len(c.Spans) == 0 && r == '^' && !esc {
+			if r == '^' && !esc && !c.Neg && len(c.Spans) == 0 && !hasPrev {
 				c.Neg = true
 				continue
 			}
@@ -404,8 +404,8 @@ func (x *lexer) nextUnesc(delim rune) (rune, bool, error) {
 			if r == delim {
 				return r, true, nil
 			}
-			// For character classes, allow \- as -.
-			if delim == ']' && r == '-' {
+			// For character classes, allow \- as - and \^ as ^.
+			if delim == ']' && (r == '-' || r == '^') {
 				return r, true, nil
 			}
 			return 0, false, errUnknownEsc

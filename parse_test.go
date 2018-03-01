@@ -572,6 +572,110 @@ G <- [fgh]*`,
 		Error: `^test.file:1.6,1.8: unclosed "`,
 	},
 
+	// Whitespace.
+	// BUG: The current YACC grammar
+	// doesn't allow whitespace between all tokens,
+	// but only particular tokens.
+	// Specifically whitespace can only appear after
+	// delimiters after which a new rule cannot begin.
+	// This is because, in order to remain LALR(1),
+	// a newline terminates a sequence expression,
+	// denoting that the next identifier is a rule name.
+	{
+		Name: `after <-`,
+		Input: `A <-
+		"a"
+
+		B <- #comment
+		"b"
+
+		C "c" <-
+		"c"
+
+		D "d" <- #comment
+		"d"`,
+		FullString: `A <- ("a")
+B <- ("b")
+C "c" <- ("c")
+D "d" <- ("d")`,
+		String: `A <- "a"
+B <- "b"
+C "c" <- "c"
+D "d" <- "d"`,
+	},
+	{
+		Name: `after /`,
+		Input: `A <- B /
+		C / # comment
+		D`,
+		FullString: `A <- (((B)/(C))/(D))`,
+		String:     `A <- B/C/D`,
+	},
+	{
+		Name: `after : label`,
+		Input: `A <- l:
+		B m: #comment
+		C`,
+		FullString: `A <- ((l:(B)) (m:(C)))`,
+		String:     `A <- l:B m:C`,
+	},
+	{
+		Name: `after & predicate`,
+		Input: `A <- &
+		B & #comment
+		C`,
+		FullString: `A <- ((&(B)) (&(C)))`,
+		String:     `A <- &B &C`,
+	},
+	{
+		Name: `after ! predicate`,
+		Input: `A <- !
+		B ! #comment
+		C`,
+		FullString: `A <- ((!(B)) (!(C)))`,
+		String:     `A <- !B !C`,
+	},
+	{
+		Name: `after (`,
+		Input: `A <- (
+		B ( #comment
+		C))`,
+		FullString: `A <- ((B) (C))`,
+		String:     `A <- (B (C))`,
+	},
+	{
+		Name: `before )`,
+		Input: `A <- (B (C
+		) #comment
+		)`,
+		FullString: `A <- ((B) (C))`,
+		String:     `A <- (B (C))`,
+	},
+	{
+		Name: `after & code`,
+		Input: `A <- &
+		{code} & #comment
+		{CODE}`,
+		FullString: `A <- ((&{code}) (&{CODE}))`,
+		String:     `A <- &{code} &{CODE}`,
+	},
+	{
+		Name: `after ! code`,
+		Input: `A <- !
+		{code} ! #comment
+		{CODE}`,
+		FullString: `A <- ((!{code}) (!{CODE}))`,
+		String:     `A <- !{code} !{CODE}`,
+	},
+	{
+		Name: `after : type`,
+		Input: `A <- A "t":
+		{code} / B T: #comment
+		{CODE}`,
+		FullString: `A <- (((A) t:{code})/((B) T:{CODE}))`,
+		String:     `A <- A t:{code}/B T:{CODE}`,
+	},
+
 	// Systax errors.
 	{
 		Name:  "bad rule name",

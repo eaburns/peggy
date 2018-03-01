@@ -36,11 +36,11 @@ import "io"
 %%
 
 Top:
-	OptionalNewLine Grammar { peggylex.(*lexer).result = $2 }
+	Nl Grammar { peggylex.(*lexer).result = $2 }
 
 Grammar:
-	Prelude NewLine Rules OptionalNewLine { $$ = Grammar{ Prelude: $1, Rules: $3 } }
-|	Rules OptionalNewLine { $$ = Grammar{ Rules: $1 } }
+	Prelude NewLine Rules Nl { $$ = Grammar{ Prelude: $1, Rules: $3 } }
+|	Rules Nl { $$ = Grammar{ Rules: $1 } }
 
 Prelude:
 	_CODE
@@ -63,21 +63,21 @@ Rules:
 |	{ $$ = nil }
 
 Rule:
-	_IDENT _ARROW Expr {
-		$$ = Rule{ Name: $1, Expr: $3 }
+	_IDENT _ARROW Nl Expr {
+		$$ = Rule{ Name: $1, Expr: $4 }
 	}
-|	_IDENT _STRING _ARROW Expr {
-		$$ = Rule{ Name: $1, ErrorName: $2, Expr: $4 }
+|	_IDENT _STRING _ARROW Nl Expr {
+		$$ = Rule{ Name: $1, ErrorName: $2, Expr: $5 }
 	}
 
 Expr:
-	Expr '/' ActExpr
+	Expr '/' Nl ActExpr
 	{
 		e, ok := $1.(*Choice)
 		if !ok {
 			e = &Choice{ Exprs: []Expr{$1} }
 		}
-		e.Exprs = append(e.Exprs, $3)
+		e.Exprs = append(e.Exprs, $4)
 		$$ = e
 	}
 |	ActExpr { $$ = $1 }
@@ -103,12 +103,12 @@ SeqExpr:
 |	LabelExpr { $$ = $1 }
 
 LabelExpr:
-	_IDENT ':' PredExpr { $$ = &LabelExpr{ Label: $1, Expr: $3 } }
+	_IDENT ':' Nl PredExpr { $$ = &LabelExpr{ Label: $1, Expr: $4 } }
 |	PredExpr { $$ = $1 }
 
 PredExpr:
-	'&' PredExpr { $$ = &PredExpr{ Expr: $2, Loc: $1 } }
-|	'!' PredExpr { $$ = &PredExpr{ Neg: true, Expr: $2, Loc: $1 } }
+	'&' Nl PredExpr { $$ = &PredExpr{ Expr: $3, Loc: $1 } }
+|	'!' Nl PredExpr { $$ = &PredExpr{ Neg: true, Expr: $3, Loc: $1 } }
 |	RepExpr { $$ = $1 }
 
 RepExpr:
@@ -118,14 +118,14 @@ RepExpr:
 |	Operand { $$ = $1 }
 
 Operand:
-	'(' Expr ')' { $$ = &SubExpr{ Expr: $2, Open: $1, Close: $3 } }
-|	'&' GoPred { $$ = &PredCode{ Code: $2, Loc: $1 } }
-|	'!' GoPred { $$ = &PredCode{ Neg: true, Code: $2, Loc: $1 } }
+	'(' Nl Expr Nl ')' { $$ = &SubExpr{ Expr: $3, Open: $1, Close: $5 } }
+|	'&' Nl  GoPred { $$ = &PredCode{ Code: $3, Loc: $1 } }
+|	'!' Nl GoPred { $$ = &PredCode{ Neg: true, Code: $3, Loc: $1 } }
 |	'.' { $$ = &Any{ Loc: $1 } }
 |	_IDENT { $$ = &Ident{ Name: $1 } }
 |	_STRING { $$ = &Literal{ Text: $1 } }
 |	_CHARCLASS { $$ =$1 }
-|	'(' Expr error { peggylex.Error("unexpected end of file") }
+|	'(' Nl Expr error { peggylex.Error("unexpected end of file") }
 
 GoPred:
 	_CODE
@@ -152,14 +152,14 @@ GoAction:
 	}
 
 GoType:
-	_IDENT ':' { $$ = $1 }
-|	_STRING ':' { $$ = $1 }
+	_IDENT ':' Nl { $$ = $1 }
+|	_STRING ':' Nl { $$ = $1 }
 
 NewLine:
 	'\n' NewLine
 |	'\n'
 
-OptionalNewLine:
+Nl:
 	NewLine
 |
 

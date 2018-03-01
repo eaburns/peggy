@@ -54,7 +54,7 @@ func (e *Action) String() string {
 	if strings.IndexFunc(t, func(r rune) bool { return !isIdentRune(r) }) >= 0 {
 		t = `"` + t + `"`
 	}
-	return e.Expr.String() + " " + t + ":{" + e.Code.String() + "}"
+	return e.Expr.String() + " " + t + ":{…}"
 }
 
 func (e *Sequence) String() string {
@@ -98,7 +98,7 @@ func (e *PredCode) String() string {
 	if e.Neg {
 		s = "!{"
 	}
-	return s + e.Code.String() + "}"
+	return s + "…}"
 }
 
 func (e *Literal) String() string {
@@ -201,7 +201,13 @@ func (e *OptExpr) fullString() string {
 
 func (e *Ident) fullString() string { return "(" + e.String() + ")" }
 
-func (e *PredCode) fullString() string { return "(" + e.String() + ")" }
+func (e *PredCode) fullString() string {
+	s := "(&{"
+	if e.Neg {
+		s = "(!{"
+	}
+	return s + e.Code.String() + "})"
+}
 
 func (e *Literal) fullString() string { return "(" + e.String() + ")" }
 

@@ -786,7 +786,9 @@ var predCodeTemplate = `// pred code
 			if pos >= errPos {
 				failure.Kids = append(failure.Kids, &peg.Fail{
 					Pos: int(pos),
-					Want: {{quote $.Expr.String}},
+					Want:
+					{{- if $.Expr.Neg}}"!{"{{else}}"&{"{{end}}+
+					{{- quote $.Expr.Code.String}}+"}",
 				})
 			}
 		{{end -}}

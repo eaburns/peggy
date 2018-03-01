@@ -133,13 +133,13 @@ func main() { fmt.Println("Hello, World") }
 		Name:       "& pred code",
 		Input:      "A <- &{pred}",
 		FullString: "A <- (&{pred})",
-		String:     "A <- &{pred}",
+		String:     "A <- &{…}",
 	},
 	{
 		Name:       "! pred code",
 		Input:      "A <- !{pred}",
 		FullString: "A <- (!{pred})",
-		String:     "A <- !{pred}",
+		String:     "A <- !{…}",
 	},
 	{
 		Name:       "any",
@@ -222,19 +222,19 @@ func main() { fmt.Println("Hello, World") }
 		Name:       "various precedences",
 		Input:      "A <- x:B*+ C?/(!D y:&E)* T:{c}/F !{p}",
 		FullString: "A <- ((((x:(((B)*)+)) ((C)?))/((((!(D)) (y:(&(E))))*) T:{c}))/((F) (!{p})))",
-		String:     "A <- x:B*+ C?/(!D y:&E)* T:{c}/F !{p}",
+		String:     "A <- x:B*+ C?/(!D y:&E)* T:{…}/F !{…}",
 	},
 	{
 		Name:       "action < choice",
 		Input:      "A <- B T:{act}/C T:{act}",
 		FullString: "A <- (((B) T:{act})/((C) T:{act}))",
-		String:     "A <- B T:{act}/C T:{act}",
+		String:     "A <- B T:{…}/C T:{…}",
 	},
 	{
 		Name:       "sequence < action",
 		Input:      "A <- B C T:{act}",
 		FullString: "A <- (((B) (C)) T:{act})",
-		String:     "A <- B C T:{act}",
+		String:     "A <- B C T:{…}",
 	},
 	{
 		Name:       "label < sequence",
@@ -271,8 +271,8 @@ E <- ((Z)*)
 F <- (("cde")*)
 G <- (([fgh])*)`,
 		String: `A <- (a/b c)*
-B <- &{pred}*
-C <- !{pred}*
+B <- &{…}*
+C <- !{…}*
 D <- .*
 E <- Z*
 F <- "cde"*
@@ -284,19 +284,19 @@ G <- [fgh]*`,
 		Name:       "action with ident type",
 		Input:      `A <- "abc" T:{act}`,
 		FullString: `A <- (("abc") T:{act})`,
-		String:     `A <- "abc" T:{act}`,
+		String:     `A <- "abc" T:{…}`,
 	},
 	{
 		Name:       "action with string type",
 		Input:      `A <- "abc" "interface{}":{act}`,
 		FullString: `A <- (("abc") "interface{}":{act})`,
-		String:     `A <- "abc" "interface{}":{act}`,
+		String:     `A <- "abc" "interface{}":{…}`,
 	},
 	{
 		Name:       "action strip unnecessary quotes",
 		Input:      `A <- "abc" "XYZ":{act}`,
 		FullString: `A <- (("abc") XYZ:{act})`,
-		String:     `A <- "abc" XYZ:{act}`,
+		String:     `A <- "abc" XYZ:{…}`,
 	},
 
 	// Rune escaping
@@ -657,7 +657,7 @@ D "d" <- "d"`,
 		{code} & #comment
 		{CODE}`,
 		FullString: `A <- ((&{code}) (&{CODE}))`,
-		String:     `A <- &{code} &{CODE}`,
+		String:     `A <- &{…} &{…}`,
 	},
 	{
 		Name: `after ! code`,
@@ -665,7 +665,7 @@ D "d" <- "d"`,
 		{code} ! #comment
 		{CODE}`,
 		FullString: `A <- ((!{code}) (!{CODE}))`,
-		String:     `A <- !{code} !{CODE}`,
+		String:     `A <- !{…} !{…}`,
 	},
 	{
 		Name: `after : type`,
@@ -673,7 +673,7 @@ D "d" <- "d"`,
 		{code} / B T: #comment
 		{CODE}`,
 		FullString: `A <- (((A) t:{code})/((B) T:{CODE}))`,
-		String:     `A <- A t:{code}/B T:{CODE}`,
+		String:     `A <- A t:{…}/B T:{…}`,
 	},
 
 	// Systax errors.

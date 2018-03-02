@@ -411,7 +411,7 @@ var ruleAccepts = `
 	{{$pre := $.Config.Prefix -}}
 	{{- $name := $.Rule.Name.String -}}
 	func {{$pre}}{{$name}}Accepts(parser *{{$pre}}Parser, start int) (deltaPos, deltaErr int) {
-		{{template "stringLabels" $}}
+		{{- template "stringLabels" $}}
 		if dp, de, ok := {{$pre}}memo(parser, {{$pre}}{{$name}}, start); ok {
 			return dp, de
 		}
@@ -433,7 +433,7 @@ var ruleNode = `
 	{{$pre := $.Config.Prefix -}}
 	{{- $name := $.Rule.Name.String -}}
 	func {{$pre}}{{$name}}Node(parser *{{$pre}}Parser, start int) (int, *peg.Node) {
-		{{template "stringLabels" $}}
+		{{- template "stringLabels" $}}
 		dp := parser.deltaPos[start][{{$pre}}{{$name}}]
 		if dp < 0 {
 			return -1, nil
@@ -461,7 +461,7 @@ var ruleFail = `
 	{{$pre := $.Config.Prefix -}}
 	{{- $name := $.Rule.Name.String -}}
 	func {{$pre}}{{$name}}Fail(parser *{{$pre}}Parser, start, errPos int) (int, *peg.Fail) {
-		{{template "stringLabels" $}}
+		{{- template "stringLabels" $}}
 		if start > parser.lastFail {
 			return -1, &peg.Fail{}
 		}
@@ -510,7 +510,7 @@ var ruleAction = `
 	{{- $name := $.Rule.Name.String -}}
 	{{- $type := $.Rule.Expr.Type -}}
 	func {{$pre}}{{$name}}Action(parser *{{$pre}}Parser, start int) (int, *{{$type}}) {
-		{{template "stringLabels" $}}
+		{{- template "stringLabels" $}}
 		{{if $.Rule.Labels -}}
 			{{range $l := $.Rule.Labels -}}
 				var label{{$l.N}} {{$l.Type}}

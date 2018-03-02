@@ -216,7 +216,7 @@ var declsTemplate = `
 
 	type {{$pre}}key struct {
 		start int
-		name string
+		rule int
 	}
 
 	func {{$pre}}NewParser(text string) *{{$pre}}Parser {
@@ -260,6 +260,28 @@ var declsTemplate = `
 		}
 		de := parser.deltaErr[start][rule] - 1
 		return int(dp), int(de), true
+	}
+	
+	func {{$pre}}failMemo(parser *{{$pre}}Parser, rule, start, errPos int) (int, *peg.Fail) {
+		if start > parser.lastFail {
+			return -1, &peg.Fail{}
+		}
+		dp := parser.deltaPos[start][rule]
+		de := parser.deltaErr[start][rule]
+		if start+int(de-1) < errPos {
+			if dp > 0 {
+				return start + int(dp-1), &peg.Fail{}
+			}
+			return -1, &peg.Fail{}
+		}
+		f := parser.fail[_key{start: start, rule: rule}]
+		if dp < 0 && f != nil {
+			return -1, f
+		}
+		if dp > 0 && f != nil {
+			return start + int(dp-1), f
+		}
+		return start, nil
 	}
 
 	func {{$pre}}accept(parser *{{$pre}}Parser, f func(*{{$pre}}Parser, int) (int, int), pos, perr *int) bool {
@@ -438,7 +460,7 @@ var ruleNode = `
 		if dp < 0 {
 			return -1, nil
 		}
-		key := {{$pre}}key{start: start, name: {{quote $name}}}
+		key := {{$pre}}key{start: start, rule: {{$pre}}{{$name}}}
 		node := parser.node[key]
 		if node != nil {
 			return start + int(dp - 1), node
@@ -462,30 +484,15 @@ var ruleFail = `
 	{{- $name := $.Rule.Name.String -}}
 	func {{$pre}}{{$name}}Fail(parser *{{$pre}}Parser, start, errPos int) (int, *peg.Fail) {
 		{{- template "stringLabels" $}}
-		if start > parser.lastFail {
-			return -1, &peg.Fail{}
+		pos, failure := {{$pre}}failMemo(parser, {{$pre}}{{$name}}, start, errPos)
+		if failure != nil {
+			return pos, failure
 		}
-		dp := parser.deltaPos[start][{{$pre}}{{$name}}]
-		de := parser.deltaErr[start][{{$pre}}{{$name}}]
-		if start + int(de - 1) < errPos {
-			if dp > 0 {
-				return start + int(dp - 1), &peg.Fail{}
-			}
-			return -1, &peg.Fail{}
-		}
-		key := {{$pre}}key{start: start, name: {{quote $name}}}
-		failure := parser.fail[key]
-		if dp < 0 && failure != nil {
-			return -1, failure
-		}
-		if dp > 0 && failure != nil {
-			return start + int(dp - 1), failure
-		}
-		pos := start
 		failure = &peg.Fail{
 			Name: {{quote $name}},
 			Pos: int(start),
 		}
+		key := {{$pre}}key{start: start, rule: {{$pre}}{{$name}}}
 		{{gen (makeFailState $.Rule) $.Rule.Expr "fail" -}}
 
 		{{if $.Rule.ErrorName -}}
@@ -521,7 +528,7 @@ var ruleAction = `
 		if dp < 0 {
 			return -1, nil
 		}
-		key := {{$pre}}key{start: start, name: {{quote $name}}}
+		key := {{$pre}}key{start: start, rule: {{$pre}}{{$name}}}
 		node := parser.act[key]
 		if node != nil {
 			n, _ := node.({{$type}})

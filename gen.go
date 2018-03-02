@@ -195,10 +195,18 @@ func addGlobalTemplates(tmp *template.Template) error {
 
 var declsTemplate = `
 	{{$pre := $.Config.Prefix -}}
+
+	const (
+		{{range $r := $.Grammar.Rules -}}
+			{{$pre}}{{$r.Name.String}} int = {{$r.N}}
+		{{end}}
+		{{$pre}}N int = {{len $.Grammar.Rules}}
+	)
+
 	type {{$pre}}Parser struct {
 		text string
-		deltaPos []{{$pre}}Rules
-		deltaErr []{{$pre}}Rules
+		deltaPos [][{{$pre}}N]int32
+		deltaErr [][{{$pre}}N]int32
 		node map[{{$pre}}key]*peg.Node
 		fail map[{{$pre}}key]*peg.Fail
 		act map[{{$pre}}key]interface{}
@@ -214,18 +222,12 @@ var declsTemplate = `
 	func {{$pre}}NewParser(text string) *{{$pre}}Parser {
 		return &{{$pre}}Parser{
 			text: text,
-			deltaPos: make([]{{$pre}}Rules, len(text)+1),
-			deltaErr: make([]{{$pre}}Rules, len(text)+1),
+			deltaPos: make([][{{$pre}}N]int32, len(text)+1),
+			deltaErr: make([][{{$pre}}N]int32, len(text)+1),
 			node: make(map[{{$pre}}key]*peg.Node),
 			fail: make(map[{{$pre}}key]*peg.Fail),
 			act: make(map[{{$pre}}key]interface{}),
 		}
-	}
-
-	type {{$pre}}Rules struct {
-	{{range $r := $.Grammar.Rules -}}
-		{{$r.Name.String}} int32
-	{{end}}
 	}
 
 	func {{$pre}}max(a, b int) int {
@@ -233,6 +235,31 @@ var declsTemplate = `
 			return a
 		}
 		return b
+	}
+
+	func {{$pre}}memoize(parser *{{$pre}}Parser, rule, start, pos, perr int) (int, int) {
+		parser.lastFail = perr
+		derr := perr - start
+		parser.deltaErr[start][rule] = int32(derr+1)
+		if pos >= 0 {
+			dpos := pos - start
+			parser.deltaPos[start][rule] = int32(dpos + 1)
+			return dpos, derr
+		}
+		parser.deltaPos[start][rule] = -1
+		return -1, derr
+	}
+
+	func {{$pre}}memo(parser *{{$pre}}Parser, rule, start int) (int, int, bool) {
+		dp := parser.deltaPos[start][rule]
+		if dp == 0 {
+			return 0, 0, false
+		}
+		if dp > 0 {
+			dp--
+		}
+		de := parser.deltaErr[start][rule] - 1
+		return int(dp), int(de), true
 	}
 
 	func {{$pre}}next(parser *{{$pre}}Parser, pos int) (rune, int) {
@@ -357,12 +384,8 @@ var ruleAccepts = `
 	{{- $name := $.Rule.Name.String -}}
 	func {{$pre}}{{$name}}Accepts(parser *{{$pre}}Parser, start int) (deltaPos, deltaErr int) {
 		{{template "stringLabels" $}}
-		if dp := parser.deltaPos[start].{{$name}}; dp != 0 {
-			de := parser.deltaErr[start].{{$name}} - 1
-			if dp > 0 {
-				dp--
-			}
-			return int(dp), int(de)
+		if dp, de, ok := {{$pre}}memo(parser, {{$pre}}{{$name}}, start); ok {
+			return dp, de
 		}
 		pos, perr := start, -1
 		{{gen (makeAcceptState $.Rule) $.Rule.Expr "fail" -}}
@@ -370,19 +393,10 @@ var ruleAccepts = `
 		{{if $.Rule.ErrorName -}}
 			perr = start
 		{{end -}}
-		parser.deltaPos[start].{{$name}} = int32(pos - start) + 1
-		parser.deltaErr[start].{{$name}} = int32(perr - start) + 1
-		parser.lastFail = perr
-		return pos - start, perr - start
+		return {{$pre}}memoize(parser, {{$pre}}{{$name}}, start, pos, perr)
 	{{if $.Rule.Expr.CanFail -}}
 	fail:
-		{{if $.Rule.ErrorName -}}
-			perr = start
-		{{end -}}
-		parser.deltaPos[start].{{$name}} = -1
-		parser.deltaErr[start].{{$name}} = int32(perr - start) + 1
-		parser.lastFail = perr
-		return -1, perr - start
+		return {{$pre}}memoize(parser, {{$pre}}{{$name}}, start, -1, perr)
 	{{end -}}
 	}
 `
@@ -392,7 +406,7 @@ var ruleNode = `
 	{{- $name := $.Rule.Name.String -}}
 	func {{$pre}}{{$name}}Node(parser *{{$pre}}Parser, start int) (int, *peg.Node) {
 		{{template "stringLabels" $}}
-		dp := parser.deltaPos[start].{{$name}}
+		dp := parser.deltaPos[start][{{$pre}}{{$name}}]
 		if dp < 0 {
 			return -1, nil
 		}
@@ -423,8 +437,8 @@ var ruleFail = `
 		if start > parser.lastFail {
 			return -1, &peg.Fail{}
 		}
-		dp := parser.deltaPos[start].{{$name}}
-		de := parser.deltaErr[start].{{$name}}
+		dp := parser.deltaPos[start][{{$pre}}{{$name}}]
+		de := parser.deltaErr[start][{{$pre}}{{$name}}]
 		if start + int(de - 1) < errPos {
 			if dp > 0 {
 				return start + int(dp - 1), &peg.Fail{}
@@ -475,7 +489,7 @@ var ruleAction = `
 				label{{$l.N}} = label{{$l.N}}
 			{{end}}
 		{{- end -}}
-		dp := parser.deltaPos[start].{{$name}}
+		dp := parser.deltaPos[start][{{$pre}}{{$name}}]
 		if dp < 0 {
 			return -1, nil
 		}

@@ -16,6 +16,7 @@ func Check(grammar *Grammar) error {
 	ruleMap := make(map[string]*Rule, len(grammar.Rules))
 	for i := range grammar.Rules {
 		r := &grammar.Rules[i]
+		r.N = i
 		name := r.Name.String()
 		if other := ruleMap[name]; other != nil {
 			errs.add(r, "rule %s redefined", name)

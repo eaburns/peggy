@@ -22,6 +22,10 @@ type Rule struct {
 	// Name is the name of the rule.
 	Name Text
 
+	// N is the rule's unique integer within its containing Grammar.
+	// It is a small integer that may be used as an array index.
+	N int
+
 	// ErrorName, if non-nil, indicates that this is a named rule.
 	// Errors beneath a named rule are collapsed,
 	// reporting the error position as the start of the rule's parse
@@ -44,6 +48,7 @@ type Label struct {
 	// Type is the Go type of the labeled sub-expression.
 	Type string
 	// N is the label's unique integer within its containing Rule.
+	// It is a small integer that may be used as an array index.
 	N int
 }
 
@@ -194,6 +199,7 @@ type LabelExpr struct {
 	Expr  Expr
 	// N is a small integer assigned to this label
 	// that is unique within the containing Rule.
+	// It is a small integer that may be used as an array index.
 	N int
 }
 

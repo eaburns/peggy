@@ -262,13 +262,41 @@ var declsTemplate = `
 		return int(dp), int(de), true
 	}
 
+	func {{$pre}}accept(parser *{{$pre}}Parser, f func(*{{$pre}}Parser, int) (int, int), pos, perr *int) bool {
+		dp, de := f(parser, *pos)
+		*perr = _max(*perr, *pos+de)
+		if dp < 0 {
+			return false
+		}
+		*pos += dp
+		return true
+	}
+
+	func {{$pre}}node(parser *{{$pre}}Parser, f func(*{{$pre}}Parser, int) (int, *peg.Node), node *peg.Node, pos *int) bool {
+		p, kid := f(parser, *pos)
+		if kid == nil {
+			return false
+		}
+		node.Kids = append(node.Kids, kid)
+		*pos = p
+		return true
+	}
+
+	func {{$pre}}fail(parser *{{$pre}}Parser, f func(*{{$pre}}Parser, int, int) (int, *peg.Fail), errPos int, node *peg.Fail, pos *int) bool {
+		p, kid := f(parser, *pos, errPos)
+		if kid.Want != "" || len(kid.Kids) > 0 {
+			node.Kids = append(node.Kids, kid)
+		}
+		if p < 0 {
+			return false
+		}
+		*pos = p
+		return true
+	}
+
 	func {{$pre}}next(parser *{{$pre}}Parser, pos int) (rune, int) {
 		r, w := peg.DecodeRuneInString(parser.text[pos:])
 		return r, w
-	}
-
-	func {{$pre}}node(name string) *peg.Node {
-		return &peg.Node{Name: name}
 	}
 
 	func {{$pre}}sub(parser *{{$pre}}Parser, start, end int, kids []*peg.Node) *peg.Node {
@@ -416,7 +444,7 @@ var ruleNode = `
 			return start + int(dp - 1), node
 		}
 		pos := start
-		node = {{$pre}}node({{quote $name}})
+		node = &peg.Node{Name: {{quote $name}}}
 		{{gen (makeNodeState $.Rule) $.Rule.Expr "fail" -}}
 
 		node.Text = parser.text[start:pos]
@@ -820,39 +848,22 @@ var identTemplate = `// {{$.Expr.String}}
 	{{$pre := $.Config.Prefix -}}
 	{{- $name := $.Expr.Name.String -}}
 	{{if $.AcceptsPass -}}
-		if dp, de := {{$pre}}{{$name}}Accepts(parser, pos); dp < 0 {
-			perr = {{$pre}}max(perr, pos+de)
+		if !{{$pre}}accept(parser, {{$pre}}{{$name}}Accepts, &pos, &perr) {
 			goto {{$.Fail}}
-		} else {
-			perr = {{$pre}}max(perr, pos+de)
-			pos += dp
 		}
 	{{else if $.NodePass -}}
-		if p, kid := {{$pre}}{{$name}}Node(parser, pos); kid == nil {
+		if !{{$pre}}node(parser, {{$pre}}{{$name}}Node, node, &pos) {
 			goto {{$.Fail}}
-		} else {
-			node.Kids = append(node.Kids, kid)
-			pos = p
 		}
 	{{else if $.FailPass -}}
-		{
-			p, kid := {{$pre}}{{$name}}Fail(parser, pos, errPos)
-			if kid.Want != "" || len(kid.Kids) > 0 {
-				failure.Kids = append(failure.Kids, kid)
-			}
-			if p < 0 {
-				goto {{$.Fail}}
-			}
-			pos = p
+		if !{{$pre}}fail(parser, {{$pre}}{{$name}}Fail, errPos, failure, &pos) {
+			goto {{$.Fail}}
 		}
 	{{else if $.ActionPass -}}
-		if p, kid := {{$pre}}{{$name}}Action(parser, pos); kid == nil {
+		if p, n := {{$pre}}{{$name}}Action(parser, pos); n == nil {
 			goto {{$.Fail}}
 		} else {
-			{{/* Assign through non-interface n for type checking. */ -}}
-			var n {{$.Expr.Type}} = *kid
-			node = n
-			pos = p
+			node, pos = *n, p
 		}
 	{{end -}}
 `

@@ -18,6 +18,8 @@ import "io"
 	action *Action
 	rule Rule
 	rules []Rule
+	texts []Text
+	name Name
 	grammar Grammar
 }
 
@@ -25,13 +27,15 @@ import "io"
 %type <expr> Expr, ActExpr, SeqExpr, LabelExpr, PredExpr, RepExpr, Operand
 %type <action> GoAction
 %type <text> GoPred GoType Prelude
+%type <texts> Args
 %type <rule> Rule
 %type <rules> Rules
+%type <name> Name
 
 %token _ERROR
 %token <text> _IDENT _STRING _CODE _ARROW
 %token <cclass> _CHARCLASS
-%token <loc> '.', '*', '+', '?', ':', '/', '!', '&', '(', ')', '^'
+%token <loc> '.', '*', '+', '?', ':', '/', '!', '&', '(', ')', '^', '<', '>', ','
 
 %%
 
@@ -63,12 +67,20 @@ Rules:
 |	{ $$ = nil }
 
 Rule:
-	_IDENT _ARROW Nl Expr {
+	Name _ARROW Nl Expr {
 		$$ = Rule{ Name: $1, Expr: $4 }
 	}
-|	_IDENT _STRING _ARROW Nl Expr {
+|	Name _STRING _ARROW Nl Expr {
 		$$ = Rule{ Name: $1, ErrorName: $2, Expr: $5 }
 	}
+
+Name:
+	_IDENT '<' Args '>' { $$ = Name{ Name: $1, Args: $3 } }
+|	_IDENT { $$ = Name{ Name: $1 } }
+
+Args:
+	_IDENT { $$ = []Text{$1} }
+|	Args ',' _IDENT { $$ = append($1, $3) }
 
 Expr:
 	Expr '/' Nl ActExpr
@@ -122,7 +134,7 @@ Operand:
 |	'&' Nl  GoPred { $$ = &PredCode{ Code: $3, Loc: $1 } }
 |	'!' Nl GoPred { $$ = &PredCode{ Neg: true, Code: $3, Loc: $1 } }
 |	'.' { $$ = &Any{ Loc: $1 } }
-|	_IDENT { $$ = &Ident{ Name: $1 } }
+|	Name { $$ = &Ident{ Name: $1 } }
 |	_STRING { $$ = &Literal{ Text: $1 } }
 |	_CHARCLASS { $$ =$1 }
 |	'(' Nl Expr error { peggylex.Error("unexpected end of file") }

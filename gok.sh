@@ -38,7 +38,7 @@ golint ./... \
 	| grep -v 'receiver name peggyrcvr should be consistent'\
 	| grep -v 'const peggyEofCode should be peggyEOFCode'\
 	| egrep -v 'grammar.y.*ALL_CAPS'\
-	| egrep -v '(Begin|End|FullParenString|Type|CanFail).*should have comment or be unexported'\
+	| egrep -v '(Begin|End|FullParenString|Type|CanFail|Walk).*should have comment or be unexported'\
 	| egrep -v 'GenAccept should have comment or'\
 	> $o 2>&1
 # Silly: diff the grepped golint output with empty.

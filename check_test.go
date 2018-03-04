@@ -70,6 +70,35 @@ G <- [fgh]*`,
 			err:  ".+",
 		},
 		{
+			name: "template parameter OK",
+			in: `A<x> <- x
+				B <- A<C>
+				C <- "c"`,
+			err: "",
+		},
+		{
+			name: "template parameter redef",
+			in: `A<x, x> <- x
+				B <- A<C, C>
+				C <- "c"`,
+			err: "^test.file:1.6,1.7: parameter x redefined$",
+		},
+		{
+			name: "template and non-template redef",
+			in: `A<x> <- x
+				B <- A<C>
+				C <- "c"
+				A <- "a"`,
+			err: "^test.file:4.5,4.13: rule A redefined$",
+		},
+		{
+			name: "template arg count mismatch",
+			in: `A<x> <- x
+				B <- A<C, C>
+				C <- "c"`,
+			err: "test.file:2.10,2.16: template A<x> argument count mismatch: got 2, expected 1",
+		},
+		{
 			name: "multiple errors",
 			in:   "A <- U1 U2\nA <- u:[x] u:[x]",
 			err: "test.file:1.6,1.8: rule U1 undefined\n" +
@@ -96,9 +125,13 @@ G <- [fgh]*`,
 				return
 			}
 			re := regexp.MustCompile(test.err)
-			if !re.MatchString(err.Error()) {
+			if err == nil || !re.MatchString(err.Error()) {
+				var e string
+				if err != nil {
+					e = err.Error()
+				}
 				t.Errorf("Check(%q)=%v, but expected to match %q",
-					test.in, err.Error(), test.err)
+					test.in, e, test.err)
 				return
 			}
 		})

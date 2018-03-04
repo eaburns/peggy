@@ -41,6 +41,35 @@ func (r *Rule) String() string {
 	return r.Name.String() + name + " <- " + r.Expr.String()
 }
 
+func (n Name) String() string {
+	if len(n.Args) == 0 {
+		return n.Name.String()
+	}
+	s := n.Name.String() + "<"
+	for i, a := range n.Args {
+		if i > 0 {
+			s += ", "
+		}
+		s += a.String()
+	}
+	return s + ">"
+}
+
+// Ident returns a Go identifier for the name.
+func (n Name) Ident() string {
+	if len(n.Args) == 0 {
+		return n.Name.String()
+	}
+	s := n.Name.String() + "__"
+	for i, a := range n.Args {
+		if i > 0 {
+			s += "__"
+		}
+		s += a.String()
+	}
+	return s
+}
+
 func (e *Choice) String() string {
 	s := e.Exprs[0].String()
 	for _, sub := range e.Exprs[1:] {

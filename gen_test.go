@@ -1639,6 +1639,102 @@ var testCases = []test{
 			},
 		},
 	},
+	{
+		Name: "unary template",
+		Grammar: `
+			A <- List<B> List<C>
+			B <- "b"
+			C <- "c"
+			List<x> <- x*`,
+		Input: "bbbccc",
+		Pos:   len("bbbccc"),
+		Node: &peg.Node{
+			Name: "A",
+			Text: "bbbccc",
+			Kids: []*peg.Node{
+				{
+					Name: "List<B>",
+					Text: "bbb",
+					Kids: []*peg.Node{
+						{
+							Name: "B",
+							Text: "b",
+							Kids: []*peg.Node{{Text: "b"}},
+						},
+						{
+							Name: "B",
+							Text: "b",
+							Kids: []*peg.Node{{Text: "b"}},
+						},
+						{
+							Name: "B",
+							Text: "b",
+							Kids: []*peg.Node{{Text: "b"}},
+						},
+					},
+				},
+				{
+					Name: "List<C>",
+					Text: "ccc",
+					Kids: []*peg.Node{
+						{
+							Name: "C",
+							Text: "c",
+							Kids: []*peg.Node{{Text: "c"}},
+						},
+						{
+							Name: "C",
+							Text: "c",
+							Kids: []*peg.Node{{Text: "c"}},
+						},
+						{
+							Name: "C",
+							Text: "c",
+							Kids: []*peg.Node{{Text: "c"}},
+						},
+					},
+				},
+			},
+		},
+	},
+	{
+		Name: "3-ary template",
+		Grammar: `
+			A <- Three<X, Y, Z>
+			X <- "x"
+			Y <- "y"
+			Z <- "z"
+			Three<x, y, z> <- x y z`,
+		Input: "xyz",
+		Pos:   len("xyz"),
+		Node: &peg.Node{
+			Name: "A",
+			Text: "xyz",
+			Kids: []*peg.Node{
+				{
+					Name: "Three<X, Y, Z>",
+					Text: "xyz",
+					Kids: []*peg.Node{
+						{
+							Name: "X",
+							Text: "x",
+							Kids: []*peg.Node{{Text: "x"}},
+						},
+						{
+							Name: "Y",
+							Text: "y",
+							Kids: []*peg.Node{{Text: "y"}},
+						},
+						{
+							Name: "Z",
+							Text: "z",
+							Kids: []*peg.Node{{Text: "z"}},
+						},
+					},
+				},
+			},
+		},
+	},
 }
 
 func TestGen(t *testing.T) {

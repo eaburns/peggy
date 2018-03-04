@@ -299,6 +299,32 @@ G <- [fgh]*`,
 		String:     `A <- "abc" XYZ:{…}`,
 	},
 
+	// Templates
+	{
+		Name:       "1-ary template rule",
+		Input:      `A<x> <- x`,
+		FullString: `A<x> <- (x)`,
+		String:     `A<x> <- x`,
+	},
+	{
+		Name:       "3-ary template rule",
+		Input:      `A<x, y, z> <- x y z`,
+		FullString: `A<x, y, z> <- (((x) (y)) (z))`,
+		String:     `A<x, y, z> <- x y z`,
+	},
+	{
+		Name:       "1-ary template invocation",
+		Input:      `A <- B<x> C`,
+		FullString: `A <- ((B<x>) (C))`,
+		String:     `A <- B<x> C`,
+	},
+	{
+		Name:       "3-ary template invocation",
+		Input:      `A <- B<x, y, z> C`,
+		FullString: `A <- ((B<x, y, z>) (C))`,
+		String:     `A <- B<x, y, z> C`,
+	},
+
 	// Rune escaping
 	{
 		Name:       `escape \a`,

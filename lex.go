@@ -133,8 +133,9 @@ func (x *lexer) Lex(lval *peggySymType) (v int) {
 			lval.text.str = string([]rune{'<', r})
 			lval.text.end = x.loc()
 			if r != '-' {
+				x.back()
 				x.prevBegin = b
-				return int(r)
+				return int('<')
 			}
 			return _ARROW
 

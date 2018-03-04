@@ -40,8 +40,7 @@ func (c Config) Generate(w io.Writer, file string, gr *Grammar) error {
 	if err := writeDecls(b, c, gr); err != nil {
 		return err
 	}
-	for i := range gr.Rules {
-		r := &gr.Rules[i]
+	for _, r := range gr.CheckedRules {
 		if err := writeRule(b, c, r); err != nil {
 			return err
 		}
@@ -197,10 +196,10 @@ var declsTemplate = `
 	{{$pre := $.Config.Prefix -}}
 
 	const (
-		{{range $r := $.Grammar.Rules -}}
-			{{$pre}}{{$r.Name.String}} int = {{$r.N}}
+		{{range $r := $.Grammar.CheckedRules -}}
+			{{$pre}}{{$r.Name.Ident}} int = {{$r.N}}
 		{{end}}
-		{{$pre}}N int = {{len $.Grammar.Rules}}
+		{{$pre}}N int = {{len $.Grammar.CheckedRules}}
 	)
 
 	type {{$pre}}Parser struct {
@@ -431,10 +430,10 @@ var stringLabels = `
 
 var ruleAccepts = `
 	{{$pre := $.Config.Prefix -}}
-	{{- $name := $.Rule.Name.String -}}
-	func {{$pre}}{{$name}}Accepts(parser *{{$pre}}Parser, start int) (deltaPos, deltaErr int) {
+	{{- $id := $.Rule.Name.Ident -}}
+	func {{$pre}}{{$id}}Accepts(parser *{{$pre}}Parser, start int) (deltaPos, deltaErr int) {
 		{{- template "stringLabels" $}}
-		if dp, de, ok := {{$pre}}memo(parser, {{$pre}}{{$name}}, start); ok {
+		if dp, de, ok := {{$pre}}memo(parser, {{$pre}}{{$id}}, start); ok {
 			return dp, de
 		}
 		pos, perr := start, -1
@@ -443,24 +442,25 @@ var ruleAccepts = `
 		{{if $.Rule.ErrorName -}}
 			perr = start
 		{{end -}}
-		return {{$pre}}memoize(parser, {{$pre}}{{$name}}, start, pos, perr)
+		return {{$pre}}memoize(parser, {{$pre}}{{$id}}, start, pos, perr)
 	{{if $.Rule.Expr.CanFail -}}
 	fail:
-		return {{$pre}}memoize(parser, {{$pre}}{{$name}}, start, -1, perr)
+		return {{$pre}}memoize(parser, {{$pre}}{{$id}}, start, -1, perr)
 	{{end -}}
 	}
 `
 
 var ruleNode = `
 	{{$pre := $.Config.Prefix -}}
+	{{- $id := $.Rule.Name.Ident -}}
 	{{- $name := $.Rule.Name.String -}}
-	func {{$pre}}{{$name}}Node(parser *{{$pre}}Parser, start int) (int, *peg.Node) {
+	func {{$pre}}{{$id}}Node(parser *{{$pre}}Parser, start int) (int, *peg.Node) {
 		{{- template "stringLabels" $}}
-		dp := parser.deltaPos[start][{{$pre}}{{$name}}]
+		dp := parser.deltaPos[start][{{$pre}}{{$id}}]
 		if dp < 0 {
 			return -1, nil
 		}
-		key := {{$pre}}key{start: start, rule: {{$pre}}{{$name}}}
+		key := {{$pre}}key{start: start, rule: {{$pre}}{{$id}}}
 		node := parser.node[key]
 		if node != nil {
 			return start + int(dp - 1), node
@@ -481,18 +481,18 @@ var ruleNode = `
 
 var ruleFail = `
 	{{$pre := $.Config.Prefix -}}
-	{{- $name := $.Rule.Name.String -}}
-	func {{$pre}}{{$name}}Fail(parser *{{$pre}}Parser, start, errPos int) (int, *peg.Fail) {
+	{{- $id := $.Rule.Name.Ident -}}
+	func {{$pre}}{{$id}}Fail(parser *{{$pre}}Parser, start, errPos int) (int, *peg.Fail) {
 		{{- template "stringLabels" $}}
-		pos, failure := {{$pre}}failMemo(parser, {{$pre}}{{$name}}, start, errPos)
+		pos, failure := {{$pre}}failMemo(parser, {{$pre}}{{$id}}, start, errPos)
 		if failure != nil {
 			return pos, failure
 		}
 		failure = &peg.Fail{
-			Name: {{quote $name}},
+			Name: {{quote $id}},
 			Pos: int(start),
 		}
-		key := {{$pre}}key{start: start, rule: {{$pre}}{{$name}}}
+		key := {{$pre}}key{start: start, rule: {{$pre}}{{$id}}}
 		{{gen (makeFailState $.Rule) $.Rule.Expr "fail" -}}
 
 		{{if $.Rule.ErrorName -}}
@@ -514,9 +514,9 @@ var ruleFail = `
 
 var ruleAction = `
 	{{$pre := $.Config.Prefix -}}
-	{{- $name := $.Rule.Name.String -}}
+	{{- $id := $.Rule.Name.Ident -}}
 	{{- $type := $.Rule.Expr.Type -}}
-	func {{$pre}}{{$name}}Action(parser *{{$pre}}Parser, start int) (int, *{{$type}}) {
+	func {{$pre}}{{$id}}Action(parser *{{$pre}}Parser, start int) (int, *{{$type}}) {
 		{{- template "stringLabels" $}}
 		{{if $.Rule.Labels -}}
 			{{range $l := $.Rule.Labels -}}
@@ -524,11 +524,11 @@ var ruleAction = `
 				label{{$l.N}} = label{{$l.N}}
 			{{end}}
 		{{- end -}}
-		dp := parser.deltaPos[start][{{$pre}}{{$name}}]
+		dp := parser.deltaPos[start][{{$pre}}{{$id}}]
 		if dp < 0 {
 			return -1, nil
 		}
-		key := {{$pre}}key{start: start, rule: {{$pre}}{{$name}}}
+		key := {{$pre}}key{start: start, rule: {{$pre}}{{$id}}}
 		node := parser.act[key]
 		if node != nil {
 			n, _ := node.({{$type}})
@@ -853,7 +853,7 @@ var predCodeTemplate = `// pred code
 
 var identTemplate = `// {{$.Expr.String}}
 	{{$pre := $.Config.Prefix -}}
-	{{- $name := $.Expr.Name.String -}}
+	{{- $name := $.Expr.Name.Ident -}}
 	{{if $.AcceptsPass -}}
 		if !{{$pre}}accept(parser, {{$pre}}{{$name}}Accepts, &pos, &perr) {
 			goto {{$.Fail}}

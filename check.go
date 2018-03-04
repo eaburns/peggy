@@ -13,9 +13,9 @@ import "sort"
 // returning any errors encountered in order of their begin location.
 func Check(grammar *Grammar) error {
 	var errs Errors
-	ruleMap := make(map[string]*Rule, len(grammar.Rules))
-	for i := range grammar.Rules {
-		r := &grammar.Rules[i]
+	rules := expandTemplates(grammar.Rules, &errs)
+	ruleMap := make(map[string]*Rule, len(rules))
+	for i, r := range rules {
 		r.N = i
 		name := r.Name.String()
 		if other := ruleMap[name]; other != nil {
@@ -23,19 +23,90 @@ func Check(grammar *Grammar) error {
 		}
 		ruleMap[name] = r
 	}
+
 	var labels []map[string]*LabelExpr
-	for i := range grammar.Rules {
-		ls := check(&grammar.Rules[i], ruleMap, &errs)
+	for _, r := range rules {
+		ls := check(r, ruleMap, &errs)
 		labels = append(labels, ls)
 	}
 	for i, ls := range labels {
-		rule := &grammar.Rules[i]
+		rule := rules[i]
 		for name, expr := range ls {
 			l := Label{Name: name, Type: expr.Type(), N: expr.N}
 			rule.Labels = append(rule.Labels, l)
 		}
 	}
-	return errs.ret()
+	if err := errs.ret(); err != nil {
+		return err
+	}
+	grammar.CheckedRules = rules
+	return nil
+}
+
+func expandTemplates(rules []Rule, errs *Errors) []*Rule {
+	tmpNames := make(map[string]bool)
+	for i := range rules {
+		r := &rules[i]
+		if len(r.Args) > 0 {
+			tmpNames[r.Name.Name.String()] = true
+		}
+	}
+
+	tmps := templateInvocations(rules)
+	var expanded []*Rule
+	for i := range rules {
+		r := &rules[i]
+		if len(r.Args) == 0 {
+			n := r.Name.Name.String()
+			if tmpNames[n] {
+				errs.add(r, "rule %s redefined", n)
+			} else {
+				expanded = append(expanded, r)
+			}
+			continue
+		}
+		seenParams := make(map[string]bool)
+		for _, param := range r.Name.Args {
+			n := param.String()
+			if seenParams[n] {
+				errs.add(param, "parameter %s redefined", n)
+			}
+			seenParams[n] = true
+		}
+		for _, t := range tmps[r.Name.Name.String()] {
+			c := *r
+			if len(t.Args) != len(r.Args) {
+				errs.add(t, "template %s argument count mismatch: got %d, expected %d",
+					r.Name, len(t.Args), len(r.Args))
+				continue
+			}
+			sub := make(map[string]string, len(r.Args))
+			for i, arg := range t.Args {
+				sub[r.Args[i].String()] = arg.String()
+			}
+			c.Args = t.Args
+			c.Expr = r.Expr.substitute(sub)
+			expanded = append(expanded, &c)
+		}
+	}
+	return expanded
+}
+
+func templateInvocations(rules []Rule) map[string][]*Ident {
+	tmps := make(map[string][]*Ident)
+	for i := range rules {
+		r := &rules[i]
+		r.Expr.Walk(func(e Expr) bool {
+			if id, ok := e.(*Ident); ok {
+				if len(id.Args) > 0 {
+					n := id.Name.Name.String()
+					tmps[n] = append(tmps[n], id)
+				}
+			}
+			return true
+		})
+	}
+	return tmps
 }
 
 func check(rule *Rule, rules map[string]*Rule, errs *Errors) map[string]*LabelExpr {

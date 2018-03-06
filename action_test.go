@@ -54,26 +54,26 @@ var actionTests = []actionTest{
 		name:    "star",
 		grammar: `A <- "abc"*`,
 		cases: []actionTestCase{
-			{"", nil},
-			{"abc", []interface{}{"abc"}},
-			{"abcabc", []interface{}{"abc", "abc"}},
-			{"abcabcabcabc", []interface{}{"abc", "abc", "abc", "abc"}},
+			{"", ""},
+			{"abc", "abc"},
+			{"abcabc", "abcabc"},
+			{"abcabcabcabc", "abcabcabcabc"},
 		},
 	},
 	{
 		name:    "plus",
 		grammar: `A <- "abc"+`,
 		cases: []actionTestCase{
-			{"abc", []interface{}{"abc"}},
-			{"abcabc", []interface{}{"abc", "abc"}},
-			{"abcabcabcabc", []interface{}{"abc", "abc", "abc", "abc"}},
+			{"abc", "abc"},
+			{"abcabc", "abcabc"},
+			{"abcabcabcabc", "abcabcabcabc"},
 		},
 	},
 	{
 		name:    "question",
 		grammar: `A <- "abc"?`,
 		cases: []actionTestCase{
-			{"", nil},
+			{"", ""},
 			{"abc", "abc"},
 		},
 	},
@@ -81,7 +81,7 @@ var actionTests = []actionTest{
 		name:    "single type sequence",
 		grammar: `A <- "a" "b" "c"`,
 		cases: []actionTestCase{
-			{"abc", []interface{}{"a", "b", "c"}},
+			{"abc", "abc"},
 		},
 	},
 	{
@@ -98,17 +98,14 @@ var actionTests = []actionTest{
 		grammar: `A <- "abc" / "x" "y" "z"`,
 		cases: []actionTestCase{
 			{"abc", "abc"},
-			{"xyz", []interface{}{"x", "y", "z"}},
+			{"xyz", "xyz"},
 		},
 	},
 	{
 		name:    "multi-type sequence",
 		grammar: `A <- ("a" "b" "c") "xyz"`,
 		cases: []actionTestCase{
-			{"abcxyz", []interface{}{
-				[]interface{}{"a", "b", "c"},
-				"xyz"},
-			},
+			{"abcxyz", "abcxyz"},
 		},
 	},
 	{
@@ -117,10 +114,7 @@ var actionTests = []actionTest{
 			A <- Abc "xyz"
 			Abc <- "a" "b" "c"`,
 		cases: []actionTestCase{
-			{"abcxyz", []interface{}{
-				[]interface{}{"a", "b", "c"},
-				"xyz"},
-			},
+			{"abcxyz", "abcxyz"},
 		},
 	},
 	{
@@ -129,7 +123,7 @@ var actionTests = []actionTest{
 			A <- &Abc "abc"
 			Abc <- "a" "b" "c"`,
 		cases: []actionTestCase{
-			{"abc", []interface{}{true, "abc"}},
+			{"abc", "abc"},
 		},
 	},
 	{
@@ -138,7 +132,7 @@ var actionTests = []actionTest{
 			A <- !Abc "xyz"
 			Abc <- "a" "b" "c"`,
 		cases: []actionTestCase{
-			{"xyz", []interface{}{true, "xyz"}},
+			{"xyz", "xyz"},
 		},
 	},
 	{
@@ -147,7 +141,7 @@ var actionTests = []actionTest{
 			A <- &{ true } "abc"
 			Abc <- "a" "b" "c"`,
 		cases: []actionTestCase{
-			{"abc", []interface{}{true, "abc"}},
+			{"abc", "abc"},
 		},
 	},
 	{
@@ -156,21 +150,21 @@ var actionTests = []actionTest{
 			A <- !{ false } "xyz"
 			Abc <- "a" "b" "c"`,
 		cases: []actionTestCase{
-			{"xyz", []interface{}{true, "xyz"}},
+			{"xyz", "xyz"},
 		},
 	},
 	{
 		name:    "subexpr",
 		grammar: `A <- ("a" "b" "c")`,
 		cases: []actionTestCase{
-			{"abc", []interface{}{"a", "b", "c"}},
+			{"abc", "abc"},
 		},
 	},
 	{
 		name:    "label",
 		grammar: `A <- l1:"a" l2:"b" l3:"c"`,
 		cases: []actionTestCase{
-			{"abc", []interface{}{"a", "b", "c"}},
+			{"abc", "abc"},
 		},
 	},
 	{
@@ -210,7 +204,7 @@ var actionTests = []actionTest{
 			Times <- "*" "func(int, int) int":{ return func(a, b int) int { return a * b } }
 			Divide <- "/" "func(int, int) int":{ return func(a, b int) int { return a / b } }
 			Factor <- Number / '(' x:Expr ')' int:{ return x }
-			Number <- x:[0-9]+ int:{ var i int; for _, s := range x { i = i * 10 + (int(s[0]) - '0') }; return i }
+			Number <- x:[0-9]+ int:{ var i int; for _, r := range x { i = i * 10 + (int(r) - '0') }; return i }
 		`,
 		cases: []actionTestCase{
 			{"1", 1.0},

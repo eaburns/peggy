@@ -229,18 +229,24 @@ func (e *Any) checkLeft(rules map[string]*Rule, p path, errs *Errors) {}
 
 func check(rule *Rule, rules map[string]*Rule, errs *Errors) map[string]*LabelExpr {
 	labels := make(map[string]*LabelExpr)
-	rule.Expr.check(rules, labels, errs)
+	rule.Expr.check(rules, labels, true, errs)
 	return labels
 }
 
-func (e *Choice) check(rules map[string]*Rule, labels map[string]*LabelExpr, errs *Errors) {
+func (e *Choice) check(rules map[string]*Rule, labels map[string]*LabelExpr, valueUsed bool, errs *Errors) {
+	t := e.Type()
 	for _, sub := range e.Exprs {
-		sub.check(rules, labels, errs)
+		sub.check(rules, labels, valueUsed, errs)
+		// Check types, but if either type is "",
+		// it's from a previous error; don't report again.
+		if got := sub.Type(); valueUsed && got != t && got != "" && t != "" {
+			errs.add(sub, "type mismatch: got %s, expected %s", got, t)
+		}
 	}
 }
 
-func (e *Action) check(rules map[string]*Rule, labels map[string]*LabelExpr, errs *Errors) {
-	e.Expr.check(rules, labels, errs)
+func (e *Action) check(rules map[string]*Rule, labels map[string]*LabelExpr, valueUsed bool, errs *Errors) {
+	e.Expr.check(rules, labels, false, errs)
 	for _, l := range labels {
 		e.Labels = append(e.Labels, l)
 	}
@@ -249,14 +255,19 @@ func (e *Action) check(rules map[string]*Rule, labels map[string]*LabelExpr, err
 	})
 }
 
-func (e *Sequence) check(rules map[string]*Rule, labels map[string]*LabelExpr, errs *Errors) {
+// BUG: figure out what to do about sequence types.
+func (e *Sequence) check(rules map[string]*Rule, labels map[string]*LabelExpr, valueUsed bool, errs *Errors) {
+	t := e.Exprs[0].Type()
 	for _, sub := range e.Exprs {
-		sub.check(rules, labels, errs)
+		sub.check(rules, labels, valueUsed, errs)
+		if got := sub.Type(); valueUsed && got != t && got != "" && t != "" {
+			errs.add(sub, "type mismatch: got %s, expected %s", got, t)
+		}
 	}
 }
 
-func (e *LabelExpr) check(rules map[string]*Rule, labels map[string]*LabelExpr, errs *Errors) {
-	e.Expr.check(rules, labels, errs)
+func (e *LabelExpr) check(rules map[string]*Rule, labels map[string]*LabelExpr, valueUsed bool, errs *Errors) {
+	e.Expr.check(rules, labels, true, errs)
 	if _, ok := labels[e.Label.String()]; ok {
 		errs.add(e.Label, "label %s redefined", e.Label.String())
 	}
@@ -264,23 +275,23 @@ func (e *LabelExpr) check(rules map[string]*Rule, labels map[string]*LabelExpr, 
 	labels[e.Label.String()] = e
 }
 
-func (e *PredExpr) check(rules map[string]*Rule, labels map[string]*LabelExpr, errs *Errors) {
-	e.Expr.check(rules, labels, errs)
+func (e *PredExpr) check(rules map[string]*Rule, labels map[string]*LabelExpr, valueUsed bool, errs *Errors) {
+	e.Expr.check(rules, labels, valueUsed, errs)
 }
 
-func (e *RepExpr) check(rules map[string]*Rule, labels map[string]*LabelExpr, errs *Errors) {
-	e.Expr.check(rules, labels, errs)
+func (e *RepExpr) check(rules map[string]*Rule, labels map[string]*LabelExpr, valueUsed bool, errs *Errors) {
+	e.Expr.check(rules, labels, valueUsed, errs)
 }
 
-func (e *OptExpr) check(rules map[string]*Rule, labels map[string]*LabelExpr, errs *Errors) {
-	e.Expr.check(rules, labels, errs)
+func (e *OptExpr) check(rules map[string]*Rule, labels map[string]*LabelExpr, valueUsed bool, errs *Errors) {
+	e.Expr.check(rules, labels, valueUsed, errs)
 }
 
-func (e *SubExpr) check(rules map[string]*Rule, labels map[string]*LabelExpr, errs *Errors) {
-	e.Expr.check(rules, labels, errs)
+func (e *SubExpr) check(rules map[string]*Rule, labels map[string]*LabelExpr, valueUsed bool, errs *Errors) {
+	e.Expr.check(rules, labels, valueUsed, errs)
 }
 
-func (e *Ident) check(rules map[string]*Rule, _ map[string]*LabelExpr, errs *Errors) {
+func (e *Ident) check(rules map[string]*Rule, _ map[string]*LabelExpr, _ bool, errs *Errors) {
 	r, ok := rules[e.Name.String()]
 	if !ok {
 		errs.add(e, "rule %s undefined", e.Name.String())
@@ -289,7 +300,7 @@ func (e *Ident) check(rules map[string]*Rule, _ map[string]*LabelExpr, errs *Err
 	}
 }
 
-func (e *PredCode) check(_ map[string]*Rule, labels map[string]*LabelExpr, _ *Errors) {
+func (e *PredCode) check(_ map[string]*Rule, labels map[string]*LabelExpr, _ bool, _ *Errors) {
 	for _, l := range labels {
 		e.Labels = append(e.Labels, l)
 	}
@@ -298,8 +309,8 @@ func (e *PredCode) check(_ map[string]*Rule, labels map[string]*LabelExpr, _ *Er
 	})
 }
 
-func (e *Literal) check(map[string]*Rule, map[string]*LabelExpr, *Errors) {}
+func (e *Literal) check(map[string]*Rule, map[string]*LabelExpr, bool, *Errors) {}
 
-func (e *CharClass) check(map[string]*Rule, map[string]*LabelExpr, *Errors) {}
+func (e *CharClass) check(map[string]*Rule, map[string]*LabelExpr, bool, *Errors) {}
 
-func (e *Any) check(map[string]*Rule, map[string]*LabelExpr, *Errors) {}
+func (e *Any) check(map[string]*Rule, map[string]*LabelExpr, bool, *Errors) {}

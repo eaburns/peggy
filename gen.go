@@ -148,6 +148,8 @@ type state struct {
 	Rule *Rule
 	Expr Expr
 	Fail string
+	// Node is the ident into which to assign action-pass value, or "".
+	Node string
 	n    *int
 	// AcceptsPass indicates whether to generate the accepts pass.
 	AcceptsPass bool
@@ -162,6 +164,35 @@ type state struct {
 func (s state) id(str string) string {
 	(*s.n)++
 	return str + strconv.Itoa(*s.n-1)
+}
+
+func gen(parentState state, expr Expr, node, fail string) (string, error) {
+	t := reflect.TypeOf(expr)
+	tmpString, ok := templates[reflect.TypeOf(expr)]
+	if !ok {
+		return "", errors.New("gen not found: " + t.String())
+	}
+	funcs := map[string]interface{}{
+		"quote":     strconv.Quote,
+		"quoteRune": strconv.QuoteRune,
+		"id":        parentState.id,
+		"gen":       gen,
+		"last":      func(i int, exprs []Expr) bool { return i == len(exprs)-1 },
+	}
+	tmp, err := template.New(t.String()).Funcs(funcs).Parse(tmpString)
+	if err != nil {
+		return "", err
+	}
+	if err := addGlobalTemplates(tmp); err != nil {
+		return "", err
+	}
+	b := bytes.NewBuffer(nil)
+	state := parentState
+	state.Expr = expr
+	state.Fail = fail
+	state.Node = node
+	err = tmp.Execute(b, state)
+	return b.String(), err
 }
 
 var globalTemplates = [][2]string{
@@ -334,34 +365,6 @@ var declsTemplate = `
 	}
 `
 
-func gen(parentState state, expr Expr, fail string) (string, error) {
-	t := reflect.TypeOf(expr)
-	tmpString, ok := templates[reflect.TypeOf(expr)]
-	if !ok {
-		return "", errors.New("gen not found: " + t.String())
-	}
-	funcs := map[string]interface{}{
-		"quote":     strconv.Quote,
-		"quoteRune": strconv.QuoteRune,
-		"id":        parentState.id,
-		"gen":       gen,
-		"last":      func(i int, exprs []Expr) bool { return i == len(exprs)-1 },
-	}
-	tmp, err := template.New(t.String()).Funcs(funcs).Parse(tmpString)
-	if err != nil {
-		return "", err
-	}
-	if err := addGlobalTemplates(tmp); err != nil {
-		return "", err
-	}
-	b := bytes.NewBuffer(nil)
-	state := parentState
-	state.Expr = expr
-	state.Fail = fail
-	err = tmp.Execute(b, state)
-	return b.String(), err
-}
-
 // templates contains a mapping from Expr types to their templates.
 // These templates parse the input text and compute
 // for each <rule, pos> pair encountered by the parse,
@@ -437,7 +440,7 @@ var ruleAccepts = `
 			return dp, de
 		}
 		pos, perr := start, -1
-		{{gen (makeAcceptState $.Rule) $.Rule.Expr "fail" -}}
+		{{gen (makeAcceptState $.Rule) $.Rule.Expr "" "fail" -}}
 
 		{{if $.Rule.ErrorName -}}
 			perr = start
@@ -467,7 +470,7 @@ var ruleNode = `
 		}
 		pos := start
 		node = &peg.Node{Name: {{quote $name}}}
-		{{gen (makeNodeState $.Rule) $.Rule.Expr "fail" -}}
+		{{gen (makeNodeState $.Rule) $.Rule.Expr "" "fail" -}}
 
 		node.Text = parser.text[start:pos]
 		parser.node[key] = node
@@ -493,7 +496,7 @@ var ruleFail = `
 			Pos: int(start),
 		}
 		key := {{$pre}}key{start: start, rule: {{$pre}}{{$id}}}
-		{{gen (makeFailState $.Rule) $.Rule.Expr "fail" -}}
+		{{gen (makeFailState $.Rule) $.Rule.Expr "" "fail" -}}
 
 		{{if $.Rule.ErrorName -}}
 			failure.Kids = nil
@@ -529,19 +532,17 @@ var ruleAction = `
 			return -1, nil
 		}
 		key := {{$pre}}key{start: start, rule: {{$pre}}{{$id}}}
-		node := parser.act[key]
-		if node != nil {
-			n, _ := node.({{$type}})
+		n := parser.act[key]
+		if n != nil {
+			n := n.({{$type}})
 			return start + int(dp - 1), &n
 		}
+		var node {{$type}}
 		pos := start
-		{{gen (makeActionState $.Rule) $.Rule.Expr "fail" -}}
+		{{gen (makeActionState $.Rule) $.Rule.Expr "node" "fail" -}}
 
 		parser.act[key] = node
-		{
-			n, _ := node.({{$type}})
-			return pos,  &n
-		}
+		return pos,  &node
 	{{if $.Rule.Expr.CanFail -}}
 	fail:
 		return -1, nil
@@ -560,7 +561,7 @@ var choiceTemplate = `// {{$.Expr.String}}
 	{{end -}}
 	{{- range $i, $subExpr := $.Expr.Exprs -}}
 		{{- $fail := id "fail" -}}
-		{{gen $ $subExpr $fail -}}
+		{{gen $ $subExpr $.Node $fail -}}
 
 		{{if $subExpr.CanFail -}}
 			goto {{$ok}}
@@ -579,10 +580,10 @@ var choiceTemplate = `// {{$.Expr.String}}
 `
 
 var actionTemplate = `// action
-	{{gen $ $.Expr.Expr $.Fail -}}
+	{{gen $ $.Expr.Expr "" $.Fail -}}
 	{{if $.ActionPass -}}
 	{{/* TODO: don't put the func in the scope of the rule. */ -}}
-	node = func(
+	{{if $.Node}}{{$.Node}} = {{end}} func(
 		{{- if $.Expr.Labels -}}
 			{{range $lexpr := $.Expr.Labels -}}
 				{{$lexpr.Label}} {{$lexpr.Type}},
@@ -598,25 +599,26 @@ var actionTemplate = `// action
 `
 
 var sequenceTemplate = `// {{$.Expr.String}}
-	{{$nodes := id "nodes" -}}
-	{{if $.ActionPass -}}
+	{{$node := id "node" -}}
+	{{if (and $.ActionPass $.Node (eq $.Expr.Type "string")) -}}
 		{
-		var {{$nodes}} {{$.Expr.Type}}
+			var {{$node}} string
+	{{else if (and $.ActionPass $.Node) -}}
+		{{$.Node}} = make({{$.Expr.Type}}, {{len $.Expr.Exprs}})
 	{{end -}}
+
 	{{range $i, $subExpr := $.Expr.Exprs -}}
-		{{gen $ $subExpr $.Fail -}}
-		{{if $.ActionPass -}}
-			{
-				n, _ := node.({{$subExpr.Type}})
-				{{if last $i $.Expr.Exprs -}}
-					node = append({{$nodes}}, n)
-				{{else -}}
-					{{$nodes}} = append({{$nodes}}, n)
-				{{end -}}
-			}
-		{{end -}}	
+		{{if (and $.ActionPass $.Node (eq $.Expr.Type "string")) -}}
+			{{gen $ $subExpr $node $.Fail -}}
+			{{$.Node}} += {{$node}}
+		{{else if (and $.ActionPass $.Node) -}}
+			{{gen $ $subExpr (printf "%s[%d]" $.Node $i) $.Fail -}}
+		{{else -}}
+			{{gen $ $subExpr "" $.Fail -}}
+		{{end -}}
 	{{end -}}
-	{{if $.ActionPass -}}
+
+	{{if (and $.ActionPass $.Node (eq $.Expr.Type "string")) -}}
 		}
 	{{end -}}
 `
@@ -627,14 +629,15 @@ var labelExprTemplate = `// {{$.Expr.String}}
 	{{- $subExpr := $.Expr.Expr -}}
 	{
 		{{$pos0}} := pos
-		{{gen $ $subExpr $.Fail -}}
-		labels[{{$.Expr.N}}] = parser.text[{{$pos0}}:pos]
 		{{if $.ActionPass -}}
-			{
-				n, _ := node.({{$.Expr.Type}})
-				label{{$.Expr.N}} = n
-			}
+			{{gen $ $subExpr (printf "label%d" $.Expr.N) $.Fail -}}
+			{{if $.Node -}}
+				{{$.Node}} = label{{$.Expr.N}}
+			{{end -}}
+		{{else -}}
+			{{gen $ $subExpr "" $.Fail -}}
 		{{end -}}
+		labels[{{$.Expr.N}}] = parser.text[{{$pos0}}:pos]
 	}
 `
 
@@ -656,7 +659,7 @@ var predExprTemplate = `// {{$.Expr.String}}
 	{{end -}}
 
 	{{- if $.Expr.Neg -}}
-		{{gen $ $subExpr $ok -}}
+		{{gen $ $subExpr "" $ok -}}
 		pos = {{$pos0}}
 		{{if $.NodePass -}}
 			node.Kids = node.Kids[:{{$nkids}}]
@@ -670,13 +673,11 @@ var predExprTemplate = `// {{$.Expr.String}}
 					Want: {{quote $.Expr.String}},
 				})
 			}
-		{{else if $.ActionPass -}}
-			node = false
 		{{end -}}
 		goto {{$.Fail}}
 	{{else -}}
 		{{- $fail := id "fail" -}}
-		{{gen $ $subExpr $fail -}}
+		{{gen $ $subExpr "" $fail -}}
 		goto {{$ok}}
 		{{$fail}}:
 			pos = {{$pos0}}
@@ -690,8 +691,6 @@ var predExprTemplate = `// {{$.Expr.String}}
 						Want: {{quote $.Expr.String}},
 					})
 				}
-			{{else if $.ActionPass -}}
-				node = false
 			{{end -}}
 			goto {{$.Fail}}
 	{{end -}}
@@ -704,8 +703,8 @@ var predExprTemplate = `// {{$.Expr.String}}
 		node.Kids = node.Kids[:{{$nkids}}]
 	{{else if $.FailPass -}}
 		failure.Kids = failure.Kids[:{{$nkids}}]
-	{{else if $.ActionPass -}}
-		node = true
+	{{else if (and $.ActionPass $.Node) -}}
+		node = ""
 	{{end -}}
 }
 `
@@ -713,20 +712,22 @@ var predExprTemplate = `// {{$.Expr.String}}
 var repExprTemplate = `// {{$.Expr.String}}
 	{{$nkids := id "nkids" -}}
 	{{$pos0 := id "pos" -}}
-	{{$nodes := id "nodes" -}}
+	{{$node := id "node" -}}
 	{{- $fail := id "fail" -}}
 	{{- $subExpr := $.Expr.Expr -}}
-	{{if $.ActionPass -}}
-		{
-		var {{$nodes}} {{$.Expr.Type}}
-	{{end -}}
 	{{if eq $.Expr.Op '+' -}}
-		{{gen $ $subExpr $.Fail -}}
-		{{if $.ActionPass -}}
+		{{if (and $.ActionPass $.Node) -}}
 			{
-				n, _ := node.({{$subExpr.Type}})
-				{{$nodes}} = append({{$nodes}}, n)
+			var {{$node}} {{$subExpr.Type}}
+			{{gen $ $subExpr $node $.Fail -}}
+			{{if (eq $.Expr.Type "string") -}}
+				{{$.Node}} += {{$node}}
+			{{else -}}
+				{{$.Node}} = append({{$.Node}}, {{$node}})
+			{{end -}}
 			}
+		{{else -}}
+			{{gen $ $subExpr "" $.Fail -}}
 		{{end -}}
 	{{end -}}
 	for {
@@ -734,12 +735,16 @@ var repExprTemplate = `// {{$.Expr.String}}
 			{{$nkids}} := len(node.Kids)
 		{{end -}}
 		{{$pos0}} := pos
-		{{gen $ $subExpr $fail -}}
-		{{if $.ActionPass -}}
-			{
-				n, _ := node.({{$subExpr.Type}})
-				{{$nodes}} = append({{$nodes}}, n)
-			}
+		{{if (and $.ActionPass $.Node) -}}
+			var {{$node}} {{$subExpr.Type}}
+			{{gen $ $subExpr $node $fail -}}
+			{{if (eq $.Expr.Type "string") -}}
+				{{$.Node}} += {{$node}}
+			{{else -}}
+				{{$.Node}} = append({{$.Node}}, {{$node}})
+			{{end -}}
+		{{else -}}
+			{{gen $ $subExpr "" $fail -}}
 		{{end -}}
 		continue
 		{{$fail}}:
@@ -749,10 +754,6 @@ var repExprTemplate = `// {{$.Expr.String}}
 			pos = {{$pos0}}
 			break
 	}
-	{{if $.ActionPass -}}
-		node = {{$nodes}}
-		}
-	{{end -}}
 `
 
 var optExprTemplate = `// {{$.Expr.String}}
@@ -766,20 +767,23 @@ var optExprTemplate = `// {{$.Expr.String}}
 			{{$nkids}} := len(node.Kids)
 		{{end -}}
 		{{$pos0}} := pos
-		{{gen $ $subExpr $fail -}}
-		{{- $ok := id "ok" -}}
-		{{if $.ActionPass -}}
-			{
-				n, _ := node.({{$subExpr.Type}})
-				node = &n
-			}
+		{{if (and $.ActionPass $.Node (eq $subExpr.Type "string")) -}}
+			{{gen $ $subExpr $.Node $fail -}}
+		{{else if (and $.ActionPass $.Node) -}}
+			{{$.Node}} = new({{$subExpr.Type}})
+			{{gen $ $subExpr (printf "*%s" $.Node) $fail -}}
+		{{else -}}
+			{{gen $ $subExpr "" $fail -}}
 		{{end -}}
+		{{- $ok := id "ok" -}}
 		goto {{$ok}}
 		{{$fail}}:
 			{{if $.NodePass -}}
 				node.Kids = node.Kids[:{{$nkids}}]
-			{{else if $.ActionPass -}}
-				node = nil
+			{{else if (and $.ActionPass $.Node (eq $subExpr.Type "string")) -}}
+				{{$.Node}} = ""
+			{{else if (and $.ActionPass $.Node) -}}
+				{{$.Node}} = nil
 			{{end -}}
 			pos = {{$pos0}}
 		{{$ok}}:
@@ -798,12 +802,12 @@ var subExprTemplate = `// {{$.Expr.String}}
 		{{$nkids}} := len(node.Kids)
 		{{$pos0 := id "pos0" -}}
 		{{$pos0}} := pos
-		{{gen $ $.Expr.Expr $.Fail -}}
+		{{gen $ $.Expr.Expr $.Node $.Fail -}}
 		sub := {{$pre}}sub(parser, {{$pos0}}, pos, node.Kids[{{$nkids}}:])
 		node.Kids = append(node.Kids[:{{$nkids}}], sub)
 	}
 	{{else -}}
-		{{gen $ $.Expr.Expr $.Fail -}}
+		{{gen $ $.Expr.Expr $.Node $.Fail -}}
 	{{end -}}
 `
 
@@ -841,13 +845,10 @@ var predCodeTemplate = `// pred code
 				})
 			}
 		{{end -}}
-		{{if $.ActionPass -}}
-			node = false
-		{{end -}}
 		goto {{$.Fail}}
 	}
-	{{if $.ActionPass -}}
-		node = true
+	{{if (and $.ActionPass $.Node) -}}
+		{{$.Node}} = ""
 	{{end -}}
 `
 
@@ -870,7 +871,10 @@ var identTemplate = `// {{$.Expr.String}}
 		if p, n := {{$pre}}{{$name}}Action(parser, pos); n == nil {
 			goto {{$.Fail}}
 		} else {
-			node, pos = *n, p
+			{{if (and $.ActionPass $.Node) -}}
+				{{$.Node}} = *n
+			{{end -}}
+			pos = p
 		}
 	{{end -}}
 `
@@ -895,8 +899,8 @@ var literalTemplate = `// {{$.Expr.String}}
 	{{$pre := $.Config.Prefix -}}
 	{{if $.NodePass -}}
 		node.Kids = append(node.Kids, {{$pre}}leaf(parser, pos, pos + {{$n}}))
-	{{else if $.ActionPass -}}
-		node = parser.text[pos:pos+{{$n}}]
+	{{else if (and $.ActionPass $.Node) -}}
+		{{$.Node}} = parser.text[pos:pos+{{$n}}]
 	{{end -}}
 	{{if eq $n 1 -}}
 		pos++
@@ -925,8 +929,8 @@ var anyTemplate = `// {{$.Expr.String}}
 		{{$pre := $.Config.Prefix -}}
 		{{if $.NodePass -}}
 			node.Kids = append(node.Kids, {{$pre}}leaf(parser, pos, pos + w))
-		{{else if $.ActionPass -}}
-			node = parser.text[pos:pos+w]
+		{{else if (and $.ActionPass $.Node) -}}
+			{{$.Node}} = parser.text[pos:pos+w]
 		{{end -}}
 		pos += w
 	}
@@ -979,8 +983,8 @@ var charClassTemplate = `// {{$.Expr.String}}
 		{{if $.NodePass -}}
 			{{$pre := $.Config.Prefix -}}
 			node.Kids = append(node.Kids, {{$pre}}leaf(parser, pos, pos + w))
-		{{else if $.ActionPass -}}
-			node = parser.text[pos:pos+w]
+		{{else if (and $.ActionPass $.Node) -}}
+			{{$.Node}} = parser.text[pos:pos+w]
 		{{end -}}
 		pos += w
 	}

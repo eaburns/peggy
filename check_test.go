@@ -27,7 +27,7 @@ func TestCheck(t *testing.T) {
 			name: "various OK",
 			in: `A <- (G/B C)*
 B <- &{pred}*
-C <- !{pred}* T:{ act }
+C <- !{pred}* string:{ act }
 D <- .* !B
 E <- C*
 F <- "cde"*
@@ -174,6 +174,34 @@ G <- [fgh]*`,
 				B <- "b" B / C
 				C <- "c"`,
 			err: "",
+		},
+
+		{
+			name: "choice type mismatch",
+			in:   `A <- "a" / "b" int:{ return 5 }`,
+			err:  "^test.file:1.12,1.32: type mismatch: got int, expected string",
+		},
+		{
+			name: "sequence type mismatch",
+			in:   `A <- "a" ( "b" int:{ return 5 } )`,
+			err:  "^test.file:1.10,1.33: type mismatch: got int, expected string",
+		},
+		{
+			name: "unused choice, no mismatch",
+			in:   `A <- ( "a" / "b" int:{ return 5 } ) int:{ return 6 }`,
+			err:  "",
+		},
+		{
+			name: "unused sequence, no mismatch",
+			in:   `A <- "a" ( "b" int:{ return 5 } ) int:{ return 6 }`,
+			err:  "",
+		},
+		{
+			name: "multiple type errors",
+			in: `A <- B ( "c" int: { return 0 } )
+				B <- "b" / ( "c" int: { return 0 } )`,
+			err: "^test.file:1.8,1.32: type mismatch: got int, expected string\n" +
+				"test.file:2.16,2.40: type mismatch: got int, expected string$",
 		},
 	}
 	for _, test := range tests {

@@ -159,7 +159,7 @@ type Expr interface {
 	// check checks for undefined identifiers,
 	// linking defined identifiers to rules;
 	// and checks for type mismatches.
-	check(rules map[string]*Rule, labels map[string]*LabelExpr, errs *Errors)
+	check(rules map[string]*Rule, labels map[string]*LabelExpr, valueUsed bool, errs *Errors)
 }
 
 // A Choice is an ordered choice between expressions.
@@ -188,15 +188,11 @@ func (e *Choice) substitute(sub map[string]string) Expr {
 	return &substitute
 }
 
-func (e *Choice) Type() string {
-	t := e.Exprs[0].Type()
-	for _, e := range e.Exprs[1:] {
-		if e.Type() != t {
-			return "interface{}"
-		}
-	}
-	return t
-}
+// Type returns the type of a choice expression,
+// which is the type of it's first branch.
+// All other branches must have the same type;
+// this is verified during the Check pass.
+func (e *Choice) Type() string { return e.Exprs[0].Type() }
 
 func (e *Choice) epsilon() bool {
 	for _, e := range e.Exprs {
@@ -281,14 +277,23 @@ func (e *Sequence) substitute(sub map[string]string) Expr {
 	return &substitute
 }
 
+// Type returns the type of a sequence expression,
+// which is based on the type of its first sub-expression.
+// All other other sub-expressions must have the same type;
+// this is verified during the Check pass.
+//
+// If the first sub-expression is a string,
+// the type of the entire sequence is a string.
+// The value is the concatenation of all sub-expressions.
+//
+// Otherwise, the type is a slice of the first sub-expression type.
+// The value is the slice of all sub-expression values.
 func (e *Sequence) Type() string {
 	t := e.Exprs[0].Type()
-	for _, e := range e.Exprs[1:] {
-		if e.Type() != t {
-			return "[]interface{}"
-		}
+	if t == "string" {
+		return t
 	}
-	return "[]" + t
+	return "[]" + e.Exprs[0].Type()
 }
 
 func (e *Sequence) epsilon() bool {
@@ -353,9 +358,13 @@ type PredExpr struct {
 	Loc Loc
 }
 
-func (e *PredExpr) Begin() Loc    { return e.Loc }
-func (e *PredExpr) End() Loc      { return e.Expr.End() }
-func (e *PredExpr) Type() string  { return "bool" }
+func (e *PredExpr) Begin() Loc { return e.Loc }
+func (e *PredExpr) End() Loc   { return e.Expr.End() }
+
+// Type returns the type of the predicate expression,
+// which is a string; the value is always the empty string.
+func (e *PredExpr) Type() string { return "string" }
+
 func (e *PredExpr) epsilon() bool { return true }
 func (e *PredExpr) CanFail() bool { return e.Expr.CanFail() }
 
@@ -381,9 +390,28 @@ type RepExpr struct {
 	Loc Loc
 }
 
-func (e *RepExpr) Begin() Loc    { return e.Expr.Begin() }
-func (e *RepExpr) End() Loc      { return e.Loc }
-func (e *RepExpr) Type() string  { return "[]" + e.Expr.Type() }
+func (e *RepExpr) Begin() Loc { return e.Expr.Begin() }
+func (e *RepExpr) End() Loc   { return e.Loc }
+
+// Type returns the type of the repetition expression,
+// which is based on the type of its sub-expression.
+//
+// If the sub-expression type is string,
+// the repetition expression type is a string.
+// The value is the concatenation of all matches,
+// or the empty string if nothing matches.
+//
+// Otherwise, the type is a slice of the sub-expression type.
+// The value contains an element for each match
+// of the sub-expression.
+func (e *RepExpr) Type() string {
+	t := e.Expr.Type()
+	if t == "string" {
+		return t
+	}
+	return "[]" + t
+}
+
 func (e *RepExpr) epsilon() bool { return e.Op == '*' }
 func (e *RepExpr) CanFail() bool { return e.Op == '+' && e.Expr.CanFail() }
 
@@ -406,9 +434,28 @@ type OptExpr struct {
 	Loc Loc
 }
 
-func (e *OptExpr) Begin() Loc    { return e.Expr.Begin() }
-func (e *OptExpr) End() Loc      { return e.Loc }
-func (e *OptExpr) Type() string  { return "*" + e.Expr.Type() }
+func (e *OptExpr) Begin() Loc { return e.Expr.Begin() }
+func (e *OptExpr) End() Loc   { return e.Loc }
+
+// Type returns the type of the optional expression,
+// which is based on the type of its sub-expression.
+//
+// If the sub-expression type is string,
+// the optional expression type is a string.
+// The value is the value of the sub-expression if it matched,
+// or the empty string if it did not match.
+//
+// Otherwise, the type is a pointer to the type of the sub-expression.
+// The value is a pointer to the sub-expression's value if it matched,
+// or a nil pointer if it did not match.
+func (e *OptExpr) Type() string {
+	t := e.Expr.Type()
+	if t == "string" {
+		return t
+	}
+	return "*" + e.Expr.Type()
+}
+
 func (e *OptExpr) epsilon() bool { return true }
 func (e *OptExpr) CanFail() bool { return false }
 
@@ -439,6 +486,8 @@ func (e *Ident) End() Loc               { return e.Name.End() }
 func (e *Ident) CanFail() bool          { return true }
 func (e *Ident) Walk(f func(Expr) bool) { f(e) }
 
+// Type returns the type of the identifier expression,
+// which is the type of its corresponding rule.
 func (e *Ident) Type() string {
 	if e.rule == nil {
 		return ""
@@ -515,9 +564,13 @@ type PredCode struct {
 	Labels []*LabelExpr
 }
 
-func (e *PredCode) Begin() Loc             { return e.Loc }
-func (e *PredCode) End() Loc               { return e.Code.End() }
-func (e *PredCode) Type() string           { return "bool" }
+func (e *PredCode) Begin() Loc { return e.Loc }
+func (e *PredCode) End() Loc   { return e.Code.End() }
+
+// Type returns the type of the predicate code expression,
+// which is a string; the value is always the empty string.
+func (e *PredCode) Type() string { return "string" }
+
 func (e *PredCode) epsilon() bool          { return true }
 func (e *PredCode) CanFail() bool          { return true }
 func (e *PredCode) Walk(f func(Expr) bool) { f(e) }

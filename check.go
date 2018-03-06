@@ -24,6 +24,11 @@ func Check(grammar *Grammar) error {
 		ruleMap[name] = r
 	}
 
+	var p path
+	for _, r := range rules {
+		r.checkLeft(ruleMap, p, &errs)
+	}
+
 	var labels []map[string]*LabelExpr
 	for _, r := range rules {
 		ls := check(r, ruleMap, &errs)
@@ -108,6 +113,119 @@ func templateInvocations(rules []Rule) map[string][]*Ident {
 	}
 	return tmps
 }
+
+type path struct {
+	stack []*Rule
+	seen  map[*Rule]bool
+}
+
+func (p *path) push(r *Rule) bool {
+	if p.seen == nil {
+		p.seen = make(map[*Rule]bool)
+	}
+	if p.seen[r] {
+		return false
+	}
+	p.stack = append(p.stack, r)
+	p.seen[r] = true
+	return true
+}
+
+func (p *path) pop() {
+	p.stack = p.stack[:len(p.stack)]
+}
+
+func (p *path) cycle(r *Rule) []*Rule {
+	for i := len(p.stack) - 1; i >= 0; i-- {
+		if p.stack[i] == r {
+			return append(p.stack[i:], r)
+		}
+	}
+	panic("no cycle")
+}
+
+func cycleString(rules []*Rule) string {
+	var s string
+	for _, r := range rules {
+		if s != "" {
+			s += ", "
+		}
+		s += r.Name.String()
+	}
+	return s
+}
+
+func (r *Rule) checkLeft(rules map[string]*Rule, p path, errs *Errors) {
+	if r.typ != nil {
+		return
+	}
+	if !p.push(r) {
+		cycle := p.cycle(r)
+		errs.add(cycle[0], "left-recursion: %s", cycleString(cycle))
+		for _, r := range cycle {
+			r.typ = new(string)
+		}
+		return
+	}
+	r.Expr.checkLeft(rules, p, errs)
+	t := r.Expr.Type()
+	r.typ = &t
+	r.epsilon = r.Expr.epsilon()
+	p.pop()
+}
+
+func (e *Choice) checkLeft(rules map[string]*Rule, p path, errs *Errors) {
+	for _, sub := range e.Exprs {
+		sub.checkLeft(rules, p, errs)
+	}
+}
+
+func (e *Action) checkLeft(rules map[string]*Rule, p path, errs *Errors) {
+	e.Expr.checkLeft(rules, p, errs)
+}
+
+func (e *Sequence) checkLeft(rules map[string]*Rule, p path, errs *Errors) {
+	for _, sub := range e.Exprs {
+		sub.checkLeft(rules, p, errs)
+		if !sub.epsilon() {
+			break
+		}
+	}
+}
+
+func (e *LabelExpr) checkLeft(rules map[string]*Rule, p path, errs *Errors) {
+	e.Expr.checkLeft(rules, p, errs)
+}
+
+func (e *PredExpr) checkLeft(rules map[string]*Rule, p path, errs *Errors) {
+	e.Expr.checkLeft(rules, p, errs)
+}
+
+func (e *RepExpr) checkLeft(rules map[string]*Rule, p path, errs *Errors) {
+	e.Expr.checkLeft(rules, p, errs)
+}
+
+func (e *OptExpr) checkLeft(rules map[string]*Rule, p path, errs *Errors) {
+	e.Expr.checkLeft(rules, p, errs)
+}
+
+func (e *Ident) checkLeft(rules map[string]*Rule, p path, errs *Errors) {
+	if e.rule = rules[e.Name.String()]; e.rule != nil {
+		e.rule.checkLeft(rules, p, errs)
+	}
+}
+
+func (e *SubExpr) checkLeft(rules map[string]*Rule, p path, errs *Errors) {
+	e.Expr.checkLeft(rules, p, errs)
+}
+
+func (e *PredCode) checkLeft(rules map[string]*Rule, p path, errs *Errors) {}
+
+func (e *Literal) checkLeft(rules map[string]*Rule, p path, errs *Errors) {}
+
+func (e *CharClass) checkLeft(rules map[string]*Rule, p path, errs *Errors) {}
+
+func (e *Any) checkLeft(rules map[string]*Rule, p path, errs *Errors) {}
 
 func check(rule *Rule, rules map[string]*Rule, errs *Errors) map[string]*LabelExpr {
 	labels := make(map[string]*LabelExpr)

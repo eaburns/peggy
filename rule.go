@@ -25,10 +25,6 @@ type Grammar struct {
 type Rule struct {
 	Name
 
-	// N is the rule's unique integer within its containing Grammar.
-	// It is a small integer that may be used as an array index.
-	N int
-
 	// ErrorName, if non-nil, indicates that this is a named rule.
 	// Errors beneath a named rule are collapsed,
 	// reporting the error position as the start of the rule's parse
@@ -40,9 +36,24 @@ type Rule struct {
 	// Expr is the PEG expression matched by the rule.
 	Expr Expr
 
+	// N is the rule's unique integer within its containing Grammar.
+	// It is a small integer that may be used as an array index.
+	N int
+
+	// typ is the type of the rule in the action pass.
+	// typ is nil before the checkLeft pass add non-nil after.
+	typ *string
+
+	// epsilon indicates whether the rule can match the empty string.
+	epsilon bool
+
 	// Labels is the set of all label names in the rule's expression.
 	Labels []Label
 }
+
+func (r *Rule) Begin() Loc  { return r.Name.Begin() }
+func (r *Rule) End() Loc    { return r.Expr.End() }
+func (r Rule) Type() string { return *r.typ }
 
 // A Name is the name of a rule template.
 type Name struct {
@@ -71,9 +82,6 @@ type Label struct {
 	// It is a small integer that may be used as an array index.
 	N int
 }
-
-func (e Rule) Begin() Loc { return e.Name.Begin() }
-func (e Rule) End() Loc   { return e.Expr.End() }
 
 // Text is a string of text located along with its location in the input.
 type Text interface {
@@ -136,15 +144,21 @@ type Expr interface {
 	// This is the Go type associated with the expression.
 	Type() string
 
+	// epsilon returns whether the rule can match the empty string.
+	epsilon() bool
+
 	// CanFail returns whether the node can ever fail to parse.
 	// Nodes like * or ?, for example, can never fail.
 	// Parents of never-fail nodes needn't emit a failure branch,
 	// as it will never be called.
 	CanFail() bool
 
-	// check does semantic analysis of the expression,
-	// setting any bookkeeping needed for later code generation,
-	// and returning the first error encountered if any.
+	// checkLeft checks for left-recursion and sets rule types.
+	checkLeft(rules map[string]*Rule, p path, errs *Errors)
+
+	// check checks for undefined identifiers,
+	// linking defined identifiers to rules;
+	// and checks for type mismatches.
 	check(rules map[string]*Rule, labels map[string]*LabelExpr, errs *Errors)
 }
 
@@ -184,6 +198,15 @@ func (e *Choice) Type() string {
 	return t
 }
 
+func (e *Choice) epsilon() bool {
+	for _, e := range e.Exprs {
+		if e.epsilon() {
+			return true
+		}
+	}
+	return false
+}
+
 func (e *Choice) CanFail() bool {
 	// A choice node can only fail if all of its branches can fail.
 	// If there is a non-failing branch, it will always return accept.
@@ -216,6 +239,7 @@ type Action struct {
 func (e *Action) Begin() Loc    { return e.Expr.Begin() }
 func (e *Action) End() Loc      { return e.Code.End() }
 func (e *Action) Type() string  { return e.ReturnType.String() }
+func (e *Action) epsilon() bool { return e.Expr.epsilon() }
 func (e *Action) CanFail() bool { return e.Expr.CanFail() }
 
 func (e *Action) Walk(f func(Expr) bool) {
@@ -267,6 +291,15 @@ func (e *Sequence) Type() string {
 	return "[]" + t
 }
 
+func (e *Sequence) epsilon() bool {
+	for _, e := range e.Exprs {
+		if !e.epsilon() {
+			return false
+		}
+	}
+	return true
+}
+
 func (e *Sequence) CanFail() bool {
 	for _, s := range e.Exprs {
 		if s.CanFail() {
@@ -291,6 +324,7 @@ type LabelExpr struct {
 func (e *LabelExpr) Begin() Loc    { return e.Label.Begin() }
 func (e *LabelExpr) End() Loc      { return e.Expr.End() }
 func (e *LabelExpr) Type() string  { return e.Expr.Type() }
+func (e *LabelExpr) epsilon() bool { return e.Expr.epsilon() }
 func (e *LabelExpr) CanFail() bool { return e.Expr.CanFail() }
 
 func (e *LabelExpr) Walk(f func(Expr) bool) {
@@ -321,8 +355,9 @@ type PredExpr struct {
 
 func (e *PredExpr) Begin() Loc    { return e.Loc }
 func (e *PredExpr) End() Loc      { return e.Expr.End() }
-func (e *PredExpr) CanFail() bool { return e.Expr.CanFail() }
 func (e *PredExpr) Type() string  { return "bool" }
+func (e *PredExpr) epsilon() bool { return true }
+func (e *PredExpr) CanFail() bool { return e.Expr.CanFail() }
 
 func (e *PredExpr) Walk(f func(Expr) bool) {
 	if f(e) {
@@ -349,6 +384,7 @@ type RepExpr struct {
 func (e *RepExpr) Begin() Loc    { return e.Expr.Begin() }
 func (e *RepExpr) End() Loc      { return e.Loc }
 func (e *RepExpr) Type() string  { return "[]" + e.Expr.Type() }
+func (e *RepExpr) epsilon() bool { return e.Op == '*' }
 func (e *RepExpr) CanFail() bool { return e.Op == '+' && e.Expr.CanFail() }
 
 func (e *RepExpr) Walk(f func(Expr) bool) {
@@ -373,6 +409,7 @@ type OptExpr struct {
 func (e *OptExpr) Begin() Loc    { return e.Expr.Begin() }
 func (e *OptExpr) End() Loc      { return e.Loc }
 func (e *OptExpr) Type() string  { return "*" + e.Expr.Type() }
+func (e *OptExpr) epsilon() bool { return true }
 func (e *OptExpr) CanFail() bool { return false }
 
 func (e *OptExpr) Walk(f func(Expr) bool) {
@@ -397,12 +434,24 @@ type Ident struct {
 	rule *Rule
 }
 
-func (e *Ident) Begin() Loc    { return e.Name.Begin() }
-func (e *Ident) End() Loc      { return e.Name.End() }
-func (e *Ident) Type() string  { return e.rule.Expr.Type() }
-func (e *Ident) CanFail() bool { return true }
-
+func (e *Ident) Begin() Loc             { return e.Name.Begin() }
+func (e *Ident) End() Loc               { return e.Name.End() }
+func (e *Ident) CanFail() bool          { return true }
 func (e *Ident) Walk(f func(Expr) bool) { f(e) }
+
+func (e *Ident) Type() string {
+	if e.rule == nil {
+		return ""
+	}
+	return e.rule.Type()
+}
+
+func (e *Ident) epsilon() bool {
+	if e.rule == nil {
+		return false
+	}
+	return e.rule.epsilon
+}
 
 func (e *Ident) substitute(sub map[string]string) Expr {
 	substitute := *e
@@ -433,6 +482,7 @@ type SubExpr struct {
 func (e *SubExpr) Begin() Loc    { return e.Open }
 func (e *SubExpr) End() Loc      { return e.Close }
 func (e *SubExpr) Type() string  { return e.Expr.Type() }
+func (e *SubExpr) epsilon() bool { return e.Expr.epsilon() }
 func (e *SubExpr) CanFail() bool { return e.Expr.CanFail() }
 
 func (e *SubExpr) Walk(f func(Expr) bool) {
@@ -468,6 +518,7 @@ type PredCode struct {
 func (e *PredCode) Begin() Loc             { return e.Loc }
 func (e *PredCode) End() Loc               { return e.Code.End() }
 func (e *PredCode) Type() string           { return "bool" }
+func (e *PredCode) epsilon() bool          { return true }
 func (e *PredCode) CanFail() bool          { return true }
 func (e *PredCode) Walk(f func(Expr) bool) { f(e) }
 
@@ -488,6 +539,7 @@ type Literal struct {
 func (e *Literal) Begin() Loc             { return e.Text.Begin() }
 func (e *Literal) End() Loc               { return e.Text.End() }
 func (e *Literal) Type() string           { return "string" }
+func (e *Literal) epsilon() bool          { return false }
 func (e *Literal) CanFail() bool          { return true }
 func (e *Literal) Walk(f func(Expr) bool) { f(e) }
 
@@ -514,6 +566,7 @@ type CharClass struct {
 func (e *CharClass) Begin() Loc             { return e.Open }
 func (e *CharClass) End() Loc               { return e.Close }
 func (e *CharClass) Type() string           { return "string" }
+func (e *CharClass) epsilon() bool          { return false }
 func (e *CharClass) CanFail() bool          { return true }
 func (e *CharClass) Walk(f func(Expr) bool) { f(e) }
 
@@ -531,6 +584,7 @@ type Any struct {
 func (e *Any) Begin() Loc             { return e.Loc }
 func (e *Any) End() Loc               { return Loc{Line: e.Loc.Line, Col: e.Loc.Col + 1} }
 func (e *Any) Type() string           { return "string" }
+func (e *Any) epsilon() bool          { return false }
 func (e *Any) CanFail() bool          { return true }
 func (e *Any) Walk(f func(Expr) bool) { f(e) }
 

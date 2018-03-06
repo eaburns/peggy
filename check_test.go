@@ -106,6 +106,75 @@ G <- [fgh]*`,
 				"test.file:2.1,2.17: rule A redefined\n" +
 				"test.file:2.12,2.13: label u redefined",
 		},
+		{
+			name: "right recursion is OK",
+			in: `A <- "b" B
+				B <- A`,
+		},
+		{
+			name: "direct left-recursion",
+			in:   `A <- A`,
+			err:  "^test.file:1.1,1.7: left-recursion: A, A$",
+		},
+		{
+			name: "indirect left-recursion",
+			in: `A <- C0
+				C0 <- C1
+				C1 <- C2
+				C2 <- C0`,
+			err: "^test.file:2.5,2.13: left-recursion: C0, C1, C2, C0$",
+		},
+		{
+			name: "choice left-recursion",
+			in: `A <- B / C / D
+				B <- "b"
+				C <- "c"
+				D <- A`,
+			err: "^test.file:1.1,1.15: left-recursion: A, D, A$",
+		},
+		{
+			name: "sequence left-recursion",
+			in: `A <- !B C D E
+				B <- "b"
+				C <- !"c"
+				D <- C # non-consuming through C
+				E <- A`,
+			err: "^test.file:1.1,1.14: left-recursion: A, E, A$",
+		},
+		{
+			name: "various expr left-recursion",
+			in: `Choice <- "a" / Sequence
+				Sequence <- SubExpr "b"
+				SubExpr <- ( PredExpr )
+				PredExpr <- &RepExpr
+				RepExpr <- OptExpr+
+				OptExpr <- Action?
+				Action <- Choice string:{ return "" }`,
+			err: "^test.file:1.1,1.25: left-recursion: Choice, Sequence, SubExpr, PredExpr, RepExpr, OptExpr, Action, Choice$",
+		},
+		{
+			name: "template left-recursion",
+			in: `A <- C0
+				C0 <- C1
+				C1 <- C2<C0>
+				C2<X> <- X`,
+			err: "^test.file:2.5,2.13: left-recursion: C0, C1, C2<C0>, C0$",
+		},
+		{
+			name: "multiple left-recursion errors",
+			in: `A <- A
+				B <- C
+				C <- B`,
+			err: "^test.file:1.1,1.7: left-recursion: A, A\n" +
+				"test.file:2.5,2.11: left-recursion: B, C, B$",
+		},
+		{
+			name: "right-recursion is OK",
+			in: `A <- B C A?
+				B <- "b" B / C
+				C <- "c"`,
+			err: "",
+		},
 	}
 	for _, test := range tests {
 		test := test

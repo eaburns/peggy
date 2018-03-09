@@ -16,660 +16,424 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
-	"sync"
 	"testing"
 
 	"github.com/eaburns/peggy/peg"
 	"github.com/eaburns/pretty"
 )
 
-var binaries map[string]string
-
-type test struct {
-	Name    string
-	Grammar string
-	Input   string
-	Pos     int
-	Node    *peg.Node
-	Fail    *peg.Fail
+type genTest struct {
+	grammar string
+	cases   []genTestCase
 }
 
-var testCases = []test{
-	/*
-		// BUG: We shouldn't allow unused labels.
-		// This would be caught if we did a type check
-		// before gofmt on the output.
-		{
-			Name:    "label unused match",
-			Grammar: "A <- L:'abc'",
-			Input:   "abc",
-		},
-	*/
+type genTestCase struct {
+	name  string
+	input string
+	pos   int
+	node  *peg.Node
+	fail  *peg.Fail
+}
+
+// TODO: add the bug case.
+var genTests = []genTest{
 	{
 		// "start" is an internal identifier name. There should be no conflict.
-		Name:    "label name conflicts with parser internal variable",
-		Grammar: `A <- start:'abc' &{ start == "abc" } 'xyz'`,
-		Input:   "abcxyz",
-		Pos:     len("abcxyz"),
-		Node: &peg.Node{
-			Name: "A",
-			Text: "abcxyz",
-			Kids: []*peg.Node{
-				{Text: "abc"},
-				{Text: "xyz"},
-			},
-		},
-	},
-	{
-		Name:    "label pred expr",
-		Grammar: `A <- L:&'abc' &{L == ""} "abc"`,
-		Input:   "abc",
-		Pos:     len("abc"),
-		Node: &peg.Node{
-			Name: "A",
-			Text: "abc",
-			Kids: []*peg.Node{
-				{Text: "abc"},
-			},
-		},
-	},
-	{
-		Name:    "label rep expr none",
-		Grammar: `A <- L:'abc'* &{L == ""} 'xyz'`,
-		Input:   "xyz",
-		Pos:     len("xyz"),
-		Node: &peg.Node{
-			Name: "A",
-			Text: "xyz",
-			Kids: []*peg.Node{
-				{Text: "xyz"},
-			},
-		},
-	},
-	{
-		Name:    "label rep expr one",
-		Grammar: `A <- L:'abc'* &{L == "abc"} 'xyz'`,
-		Input:   "abcxyz",
-		Pos:     len("abcxyz"),
-		Node: &peg.Node{
-			Name: "A",
-			Text: "abcxyz",
-			Kids: []*peg.Node{
-				{Text: "abc"},
-				{Text: "xyz"},
-			},
-		},
-	},
-	{
-		Name:    "label rep expr many",
-		Grammar: `A <- L:'abc'* &{L == "abcabcabc"} 'xyz'`,
-		Input:   "abcabcabcxyz",
-		Pos:     len("abcabcabcxyz"),
-		Node: &peg.Node{
-			Name: "A",
-			Text: "abcabcabcxyz",
-			Kids: []*peg.Node{
-				{Text: "abc"},
-				{Text: "abc"},
-				{Text: "abc"},
-				{Text: "xyz"},
-			},
-		},
-	},
-	{
-		Name:    "label opt expr empty",
-		Grammar: `A <- L:'abc'? &{L == ""} 'xyz'`,
-		Input:   "xyz",
-		Pos:     len("xyz"),
-		Node: &peg.Node{
-			Name: "A",
-			Text: "xyz",
-			Kids: []*peg.Node{
-				{Text: "xyz"},
-			},
-		},
-	},
-	{
-		Name:    "label opt expr non-empty",
-		Grammar: `A <- L:'abc'? &{L == "abc"} 'xyz'`,
-		Input:   "abcxyz",
-		Pos:     len("abcxyz"),
-		Node: &peg.Node{
-			Name: "A",
-			Text: "abcxyz",
-			Kids: []*peg.Node{
-				{Text: "abc"},
-				{Text: "xyz"},
-			},
-		},
-	},
-	{
-		Name:    "label ident",
-		Grammar: "A <- L:B &{L == `abc`} 'xyz'\nB <- 'abc'",
-		Input:   "abcxyz",
-		Pos:     len("abcxyz"),
-		Node: &peg.Node{
-			Name: "A",
-			Text: "abcxyz",
-			Kids: []*peg.Node{
-				{
-					Name: "B",
-					Text: "abc",
-					Kids: []*peg.Node{{Text: "abc"}},
+		grammar: `A <- start:'abc' &{ start == "abc" } 'xyz'`,
+		cases: []genTestCase{
+			{
+				name:  "label name conflicts with parser internal variable",
+				input: "abcxyz",
+				pos:   len("abcxyz"),
+				node: &peg.Node{
+					Name: "A",
+					Text: "abcxyz",
+					Kids: []*peg.Node{
+						{Text: "abc"},
+						{Text: "xyz"},
+					},
 				},
-				{Text: "xyz"},
 			},
 		},
 	},
 	{
-		Name:    "label subexpr",
-		Grammar: "A <- L:('123' / 'abc') &{L == `abc`} 'xyz'",
-		Input:   "abcxyz",
-		Pos:     len("abcxyz"),
-		Node: &peg.Node{
-			Name: "A",
-			Text: "abcxyz",
-			Kids: []*peg.Node{
-				{
+		grammar: `A <- L:&'abc' &{L == ""} "abc"`,
+		cases: []genTestCase{
+			{
+				name:  "label pred expr",
+				input: "abc",
+				pos:   len("abc"),
+				node: &peg.Node{
+					Name: "A",
 					Text: "abc",
-					Kids: []*peg.Node{{Text: "abc"}},
+					Kids: []*peg.Node{
+						{Text: "abc"},
+					},
 				},
-				{Text: "xyz"},
 			},
 		},
 	},
 	{
-		Name:    "label predcode",
-		Grammar: "A <- L:&{true} &{L == ``} 'xyz'",
-		Input:   "xyz",
-		Pos:     len("xyz"),
-		Node: &peg.Node{
-			Name: "A",
-			Text: "xyz",
-			Kids: []*peg.Node{
-				{Text: "xyz"},
+		grammar: `A <- L:'abc'* &{L == ""} 'xyz'`,
+		cases: []genTestCase{
+			{
+				name:  "label rep expr none",
+				input: "xyz",
+				pos:   len("xyz"),
+				node: &peg.Node{
+					Name: "A",
+					Text: "xyz",
+					Kids: []*peg.Node{
+						{Text: "xyz"},
+					},
+				},
 			},
 		},
 	},
 	{
-		Name:    "label literal",
-		Grammar: "A <- L:'abc' &{L == `abc`} 'xyz'",
-		Input:   "abcxyz",
-		Pos:     len("abcxyz"),
-		Node: &peg.Node{
-			Name: "A",
-			Text: "abcxyz",
-			Kids: []*peg.Node{
-				{Text: "abc"},
-				{Text: "xyz"},
+		grammar: `A <- L:'abc'* &{L == "abc"} 'xyz'`,
+		cases: []genTestCase{
+			{
+				name:  "label rep expr one",
+				input: "abcxyz",
+				pos:   len("abcxyz"),
+				node: &peg.Node{
+					Name: "A",
+					Text: "abcxyz",
+					Kids: []*peg.Node{
+						{Text: "abc"},
+						{Text: "xyz"},
+					},
+				},
 			},
 		},
 	},
 	{
-		Name:    "label charclass",
-		Grammar: "A <- L:[a-z] &{L == `n`} 'xyz'",
-		Input:   "nxyz",
-		Pos:     len("nxyz"),
-		Node: &peg.Node{
-			Name: "A",
-			Text: "nxyz",
-			Kids: []*peg.Node{
-				{Text: "n"},
-				{Text: "xyz"},
+		grammar: `A <- L:'abc'* &{L == "abcabcabc"} 'xyz'`,
+		cases: []genTestCase{
+			{
+				name:  "label rep expr many",
+				input: "abcabcabcxyz",
+				pos:   len("abcabcabcxyz"),
+				node: &peg.Node{
+					Name: "A",
+					Text: "abcabcabcxyz",
+					Kids: []*peg.Node{
+						{Text: "abc"},
+						{Text: "abc"},
+						{Text: "abc"},
+						{Text: "xyz"},
+					},
+				},
 			},
 		},
 	},
 	{
-		Name:    "label any",
-		Grammar: "A <- L:. &{L == `α`} 'xyz'",
-		Input:   "αxyz",
-		Pos:     len("αxyz"),
-		Node: &peg.Node{
-			Name: "A",
-			Text: "αxyz",
-			Kids: []*peg.Node{
-				{Text: "α"},
-				{Text: "xyz"},
+		grammar: `A <- L:'abc'? &{L == ""} 'xyz'`,
+		cases: []genTestCase{
+			{
+				name:  "label opt expr empty",
+				input: "xyz",
+				pos:   len("xyz"),
+				node: &peg.Node{
+					Name: "A",
+					Text: "xyz",
+					Kids: []*peg.Node{
+						{Text: "xyz"},
+					},
+				},
 			},
 		},
 	},
 	{
-		Name:    "label multiple",
-		Grammar: "A <- one:. two:. three:. &{one == `1` && two == `2` && three == `3`}",
-		Input:   "123",
-		Pos:     len("123"),
-		Node: &peg.Node{
-			Name: "A",
-			Text: "123",
-			Kids: []*peg.Node{
-				{Text: "1"},
-				{Text: "2"},
-				{Text: "3"},
+		grammar: `A <- L:'abc'? &{L == "abc"} 'xyz'`,
+		cases: []genTestCase{
+			{
+				name:  "label opt expr non-empty",
+				input: "abcxyz",
+				pos:   len("abcxyz"),
+				node: &peg.Node{
+					Name: "A",
+					Text: "abcxyz",
+					Kids: []*peg.Node{
+						{Text: "abc"},
+						{Text: "xyz"},
+					},
+				},
 			},
 		},
 	},
 	{
-		Name:    "nested labels",
-		Grammar: "A <- abc:(ab:(a:'a' 'b') 'c') &{abc == `abc` && ab == `ab` && a == `a`}",
-		Input:   "abc",
-		Pos:     len("abc"),
-		Node: &peg.Node{
-			Name: "A",
-			Text: "abc",
-			Kids: []*peg.Node{
-				{
+		grammar: "A <- L:B &{L == `abc`} 'xyz'\nB <- 'abc'",
+		cases: []genTestCase{
+			{
+				name:  "label ident",
+				input: "abcxyz",
+				pos:   len("abcxyz"),
+				node: &peg.Node{
+					Name: "A",
+					Text: "abcxyz",
+					Kids: []*peg.Node{
+						{
+							Name: "B",
+							Text: "abc",
+							Kids: []*peg.Node{{Text: "abc"}},
+						},
+						{Text: "xyz"},
+					},
+				},
+			},
+		},
+	},
+	{
+		grammar: "A <- L:('123' / 'abc') &{L == `abc`} 'xyz'",
+		cases: []genTestCase{
+			{
+				name:  "label subexpr",
+				input: "abcxyz",
+				pos:   len("abcxyz"),
+				node: &peg.Node{
+					Name: "A",
+					Text: "abcxyz",
+					Kids: []*peg.Node{
+						{
+							Text: "abc",
+							Kids: []*peg.Node{{Text: "abc"}},
+						},
+						{Text: "xyz"},
+					},
+				},
+			},
+		},
+	},
+	{
+		grammar: "A <- L:&{true} &{L == ``} 'xyz'",
+		cases: []genTestCase{
+			{
+				name:  "label predcode",
+				input: "xyz",
+				pos:   len("xyz"),
+				node: &peg.Node{
+					Name: "A",
+					Text: "xyz",
+					Kids: []*peg.Node{
+						{Text: "xyz"},
+					},
+				},
+			},
+		},
+	},
+	{
+		grammar: "A <- L:'abc' &{L == `abc`} 'xyz'",
+		cases: []genTestCase{
+			{
+				name:  "label literal",
+				input: "abcxyz",
+				pos:   len("abcxyz"),
+				node: &peg.Node{
+					Name: "A",
+					Text: "abcxyz",
+					Kids: []*peg.Node{
+						{Text: "abc"},
+						{Text: "xyz"},
+					},
+				},
+			},
+		},
+	},
+	{
+		grammar: "A <- L:[a-z] &{L == `n`} 'xyz'",
+		cases: []genTestCase{
+			{
+				name:  "label charclass",
+				input: "nxyz",
+				pos:   len("nxyz"),
+				node: &peg.Node{
+					Name: "A",
+					Text: "nxyz",
+					Kids: []*peg.Node{
+						{Text: "n"},
+						{Text: "xyz"},
+					},
+				},
+			},
+		},
+	},
+	{
+		grammar: "A <- L:. &{L == `α`} 'xyz'",
+		cases: []genTestCase{
+			{
+				name:  "label any",
+				input: "αxyz",
+				pos:   len("αxyz"),
+				node: &peg.Node{
+					Name: "A",
+					Text: "αxyz",
+					Kids: []*peg.Node{
+						{Text: "α"},
+						{Text: "xyz"},
+					},
+				},
+			},
+		},
+	},
+	{
+		grammar: "A <- one:. two:. three:. &{one == `1` && two == `2` && three == `3`}",
+		cases: []genTestCase{
+			{
+				name:  "label multiple",
+				input: "123",
+				pos:   len("123"),
+				node: &peg.Node{
+					Name: "A",
+					Text: "123",
+					Kids: []*peg.Node{
+						{Text: "1"},
+						{Text: "2"},
+						{Text: "3"},
+					},
+				},
+			},
+		},
+	},
+	{
+		grammar: "A <- abc:(ab:(a:'a' 'b') 'c') &{abc == `abc` && ab == `ab` && a == `a`}",
+		cases: []genTestCase{
+			{
+				name:  "nested labels",
+				input: "abc",
+				pos:   len("abc"),
+				node: &peg.Node{
+					Name: "A",
 					Text: "abc",
 					Kids: []*peg.Node{
 						{
-							Text: "ab",
+							Text: "abc",
 							Kids: []*peg.Node{
-								{Text: "a"},
-								{Text: "b"},
+								{
+									Text: "ab",
+									Kids: []*peg.Node{
+										{Text: "a"},
+										{Text: "b"},
+									},
+								},
+								{Text: "c"},
 							},
 						},
-						{Text: "c"},
 					},
 				},
 			},
 		},
 	},
 	{
-		Name:    "predcode with label mismatch",
-		Grammar: `A <- L:'abc'* &{L == ""} !.`,
-		Input:   "abc",
-		Pos:     len("abc"),
-		Fail: &peg.Fail{
-			Name: "A",
-			Pos:  0,
-			Kids: []*peg.Fail{
-				{
-					Pos:  len("abc"),
-					Want: `"abc"`,
-				},
-				{
-					Pos:  len("abc"),
-					Want: `&{L == ""}`,
-				},
-			},
-		},
-	},
-	{
-		Name:    "predcode match",
-		Grammar: "A <- &{ true }",
-		Input:   "☺☹",
-		Pos:     0,
-		Node: &peg.Node{
-			Name: "A",
-		},
-	},
-	{
-		Name:    "predcode mismatch",
-		Grammar: "A <- &{ false }",
-		Input:   "☺☹",
-		Pos:     0,
-		Fail: &peg.Fail{
-			Name: "A",
-			Pos:  0,
-			Kids: []*peg.Fail{
-				{
+		grammar: `A <- L:'abc'* &{L == ""} !.`,
+		cases: []genTestCase{
+			{
+				name:  "predcode with label mismatch",
+				input: "abc",
+				pos:   len("abc"),
+				fail: &peg.Fail{
+					Name: "A",
 					Pos:  0,
-					Want: "&{ false }",
+					Kids: []*peg.Fail{
+						{
+							Pos:  len("abc"),
+							Want: `"abc"`,
+						},
+						{
+							Pos:  len("abc"),
+							Want: `&{L == ""}`,
+						},
+					},
 				},
 			},
 		},
 	},
 	{
-		Name:    "neg predcode match",
-		Grammar: "A <- !{ false }",
-		Input:   "☺☹",
-		Pos:     0,
-		Node: &peg.Node{
-			Name: "A",
+		grammar: "A <- &{ true }",
+		cases: []genTestCase{
+			{
+				name:  "predcode match",
+				input: "☺☹",
+				pos:   0,
+				node: &peg.Node{
+					Name: "A",
+				},
+			},
 		},
 	},
 	{
-		Name:    "neg predcode mismatch",
-		Grammar: "A <- !{ true }",
-		Input:   "☺☹",
-		Pos:     0,
-		Fail: &peg.Fail{
-			Name: "A",
-			Pos:  0,
-			Kids: []*peg.Fail{
-				{
+		grammar: "A <- &{ false }",
+		cases: []genTestCase{
+			{
+				name:  "predcode mismatch",
+				input: "☺☹",
+				pos:   0,
+				fail: &peg.Fail{
+					Name: "A",
 					Pos:  0,
-					Want: "!{ true }",
+					Kids: []*peg.Fail{
+						{
+							Pos:  0,
+							Want: "&{ false }",
+						},
+					},
 				},
 			},
 		},
 	},
 	{
-		Name:    "literal match",
-		Grammar: "A <- 'abc'",
-		Input:   "abc",
-		Pos:     len("abc"),
-		Node: &peg.Node{
-			Name: "A",
-			Text: "abc",
-			Kids: []*peg.Node{{Text: "abc"}},
-		},
-	},
-	{
-		Name:    "literal match non-ASCII",
-		Grammar: "A <- 'αβξ'",
-		Input:   "αβξ",
-		Pos:     len("αβξ"),
-		Node: &peg.Node{
-			Name: "A",
-			Text: "αβξ",
-			Kids: []*peg.Node{{Text: "αβξ"}},
-		},
-	},
-	{
-		Name:    "literal mismatch",
-		Grammar: "A <- 'abc'",
-		Input:   "abz",
-		Pos:     0,
-		Fail: &peg.Fail{
-			Name: "A",
-			Kids: []*peg.Fail{
-				{Want: `"abc"`},
+		grammar: "A <- !{ false }",
+		cases: []genTestCase{
+			{
+				name:  "neg predcode match",
+				input: "☺☹",
+				pos:   0,
+				node: &peg.Node{
+					Name: "A",
+				},
 			},
 		},
 	},
 	{
-		Name:    "any match",
-		Grammar: "A <- .",
-		Input:   "abc",
-		Pos:     len("a"),
-		Node: &peg.Node{
-			Name: "A",
-			Text: "a",
-			Kids: []*peg.Node{{Text: "a"}},
-		},
-	},
-	{
-		Name:    "any match non-ASCII",
-		Grammar: "A <- .",
-		Input:   "αβξ",
-		Pos:     len("α"),
-		Node: &peg.Node{
-			Name: "A",
-			Text: "α",
-			Kids: []*peg.Node{{Text: "α"}},
-		},
-	},
-	{
-		Name:    "any mismatch",
-		Grammar: "A <- .",
-		Input:   "",
-		Pos:     0,
-		Fail: &peg.Fail{
-			Name: "A",
-			Kids: []*peg.Fail{
-				{Want: `.`},
+		grammar: "A <- !{ true }",
+		cases: []genTestCase{
+			{
+				name:  "neg predcode mismatch",
+				input: "☺☹",
+				pos:   0,
+				fail: &peg.Fail{
+					Name: "A",
+					Pos:  0,
+					Kids: []*peg.Fail{
+						{
+							Pos:  0,
+							Want: "!{ true }",
+						},
+					},
+				},
 			},
 		},
 	},
 	{
-		Name:    "charclass match rune",
-		Grammar: "A <- [abcA-C☹☺α-ξ]",
-		Input:   "a",
-		Pos:     len("a"),
-		Node: &peg.Node{
-			Name: "A",
-			Text: "a",
-			Kids: []*peg.Node{{Text: "a"}},
-		},
-	},
-	{
-		Name:    "charclass match range",
-		Grammar: "A <- [abcA-C☹☺α-ξ]",
-		Input:   "B",
-		Pos:     len("B"),
-		Node: &peg.Node{
-			Name: "A",
-			Text: "B",
-			Kids: []*peg.Node{{Text: "B"}},
-		},
-	},
-	{
-		Name:    "charclass match non-ASCII rune",
-		Grammar: "A <- [abcA-C☹☺α-ξ]",
-		Input:   "☺",
-		Pos:     len("☺"),
-		Node: &peg.Node{
-			Name: "A",
-			Text: "☺",
-			Kids: []*peg.Node{{Text: "☺"}},
-		},
-	},
-	{
-		Name:    "charclass match non-ASCII range",
-		Grammar: "A <- [abcA-C☹☺α-ξ]",
-		Input:   "β",
-		Pos:     len("β"),
-		Node: &peg.Node{
-			Name: "A",
-			Text: "β",
-			Kids: []*peg.Node{{Text: "β"}},
-		},
-	},
-	{
-		Name:    "charclass mismatch rune",
-		Grammar: "A <- [abcA-C☹☺α-ξ]",
-		Input:   "z",
-		Pos:     0,
-		Fail: &peg.Fail{
-			Name: "A",
-			Kids: []*peg.Fail{
-				{Want: `[abcA-C☹☺α-ξ]`},
-			},
-		},
-	},
-	{
-		Name:    "charclass mismatch before range",
-		Grammar: "A <- [abcA-C☹☺α-ξ]",
-		Input:   "@", // just before A
-		Pos:     0,
-		Fail: &peg.Fail{
-			Name: "A",
-			Kids: []*peg.Fail{
-				{Want: `[abcA-C☹☺α-ξ]`},
-			},
-		},
-	},
-	{
-		Name:    "charclass mismatch after range",
-		Grammar: "A <- [abcA-C☹☺α-ξ]",
-		Input:   "D", // just after C
-		Pos:     0,
-		Fail: &peg.Fail{
-			Name: "A",
-			Kids: []*peg.Fail{
-				{Want: `[abcA-C☹☺α-ξ]`},
-			},
-		},
-	},
-	{
-		Name:    "charclass mismatch non-ASCII rune",
-		Grammar: "A <- [abcA-C☹☺α-ξ]",
-		Input:   "·",
-		Pos:     0,
-		Fail: &peg.Fail{
-			Name: "A",
-			Kids: []*peg.Fail{
-				{Want: `[abcA-C☹☺α-ξ]`},
-			},
-		},
-	},
-	{
-		Name:    "neg charclass match rune",
-		Grammar: "A <- [^abcA-C☹☺α-ξ]",
-		Input:   "z",
-		Pos:     len("z"),
-		Node: &peg.Node{
-			Name: "A",
-			Text: "z",
-			Kids: []*peg.Node{{Text: "z"}},
-		},
-	},
-	{
-		Name:    "neg charclass match before range",
-		Grammar: "A <- [^abcA-C☹☺α-ξ]",
-		Input:   "@", // just before A
-		Pos:     len("@"),
-		Node: &peg.Node{
-			Name: "A",
-			Text: "@",
-			Kids: []*peg.Node{{Text: "@"}},
-		},
-	},
-	{
-		Name:    "neg charclass match after range",
-		Grammar: "A <- [^abcA-C☹☺α-ξ]",
-		Input:   "D", // just after C
-		Pos:     len("D"),
-		Node: &peg.Node{
-			Name: "A",
-			Text: "D",
-			Kids: []*peg.Node{{Text: "D"}},
-		},
-	},
-	{
-		Name:    "neg charclass match non-ASCII rune",
-		Grammar: "A <- [^abcA-C☹☺α-ξ]",
-		Input:   "·",
-		Pos:     len("·"),
-		Node: &peg.Node{
-			Name: "A",
-			Text: "·",
-			Kids: []*peg.Node{{Text: "·"}},
-		},
-	},
-	{
-		Name:    "neg charclass mismatch rune",
-		Grammar: "A <- [^abcA-C☹☺α-ξ]",
-		Input:   "a",
-		Pos:     0,
-		Fail: &peg.Fail{
-			Name: "A",
-			Kids: []*peg.Fail{
-				{Want: `[^abcA-C☹☺α-ξ]`},
-			},
-		},
-	},
-	{
-		Name:    "neg charclass mismatch begin range",
-		Grammar: "A <- [^abcA-C☹☺α-ξ]",
-		Input:   "A",
-		Pos:     0,
-		Fail: &peg.Fail{
-			Name: "A",
-			Kids: []*peg.Fail{
-				{Want: `[^abcA-C☹☺α-ξ]`},
-			},
-		},
-	},
-	{
-		Name:    "neg charclass mismatch mid range",
-		Grammar: "A <- [^abcA-C☹☺α-ξ]",
-		Input:   "B",
-		Pos:     0,
-		Fail: &peg.Fail{
-			Name: "A",
-			Kids: []*peg.Fail{
-				{Want: `[^abcA-C☹☺α-ξ]`},
-			},
-		},
-	},
-	{
-		Name:    "neg charclass mismatch end range",
-		Grammar: "A <- [^abcA-C☹☺α-ξ]",
-		Input:   "C",
-		Pos:     0,
-		Fail: &peg.Fail{
-			Name: "A",
-			Kids: []*peg.Fail{
-				{Want: `[^abcA-C☹☺α-ξ]`},
-			},
-		},
-	},
-	{
-		Name:    "neg charclass mismatch non-ASCII rune",
-		Grammar: "A <- [^abcA-C☹☺α-ξ]",
-		Input:   "☺",
-		Pos:     0,
-		Fail: &peg.Fail{
-			Name: "A",
-			Kids: []*peg.Fail{
-				{Want: `[^abcA-C☹☺α-ξ]`},
-			},
-		},
-	},
-	{
-		Name:    "neg charclass mismatch begin non-ASCII range",
-		Grammar: "A <- [^abcA-C☹☺α-ξ]",
-		Input:   "α",
-		Pos:     0,
-		Fail: &peg.Fail{
-			Name: "A",
-			Kids: []*peg.Fail{
-				{Want: `[^abcA-C☹☺α-ξ]`},
-			},
-		},
-	},
-	{
-		Name:    "neg charclass mismatch mid non-ASCII range",
-		Grammar: "A <- [^abcA-C☹☺α-ξ]",
-		Input:   "β",
-		Pos:     0,
-		Fail: &peg.Fail{
-			Name: "A",
-			Kids: []*peg.Fail{
-				{Want: `[^abcA-C☹☺α-ξ]`},
-			},
-		},
-	},
-	{
-		Name:    "neg charclass mismatch end non-ASCII range",
-		Grammar: "A <- [^abcA-C☹☺α-ξ]",
-		Input:   "ξ",
-		Pos:     0,
-		Fail: &peg.Fail{
-			Name: "A",
-			Kids: []*peg.Fail{
-				{Want: `[^abcA-C☹☺α-ξ]`},
-			},
-		},
-	},
-	{
-		Name:    "ident match",
-		Grammar: "A <- B\nB <- 'abc'",
-		Input:   "abc",
-		Pos:     len("abc"),
-		Node: &peg.Node{
-			Name: "A",
-			Text: "abc",
-			Kids: []*peg.Node{
-				{
-					Name: "B",
+		grammar: "A <- 'abc'",
+		cases: []genTestCase{
+			{
+				name:  "literal match",
+				input: "abc",
+				pos:   len("abc"),
+				node: &peg.Node{
+					Name: "A",
 					Text: "abc",
 					Kids: []*peg.Node{{Text: "abc"}},
 				},
 			},
-		},
-	},
-	{
-		Name:    "ident mismatch",
-		Grammar: "A <- B\nB <- 'abc'",
-		Input:   "abz",
-		Pos:     0,
-		Fail: &peg.Fail{
-			Name: "A",
-			Kids: []*peg.Fail{
-				{
-					Name: "B",
+			{
+				name:  "literal mismatch",
+				input: "abz",
+				pos:   0,
+				fail: &peg.Fail{
+					Name: "A",
 					Kids: []*peg.Fail{
 						{Want: `"abc"`},
 					},
@@ -678,794 +442,14 @@ var testCases = []test{
 		},
 	},
 	{
-		Name:    "star match 0",
-		Grammar: "A <- 'abc'*",
-		Input:   "xyz",
-		Pos:     0,
-		Node: &peg.Node{
-			Name: "A",
-		},
-	},
-	{
-		Name:    "star match 0 EOF",
-		Grammar: "A <- 'abc'*",
-		Input:   "xyz",
-		Pos:     0,
-		Node: &peg.Node{
-			Name: "A",
-		},
-	},
-	{
-		Name:    "star match 1",
-		Grammar: "A <- 'abc'*",
-		Input:   "abc",
-		Pos:     len("abc"),
-		Node: &peg.Node{
-			Name: "A",
-			Text: "abc",
-			Kids: []*peg.Node{{Text: "abc"}},
-		},
-	},
-	{
-		Name:    "star match >1",
-		Grammar: "A <- 'abc'*",
-		Input:   "abcabcabcxyz",
-		Pos:     len("abcabcabc"),
-		Node: &peg.Node{
-			Name: "A",
-			Text: "abcabcabc",
-			Kids: []*peg.Node{
-				{Text: "abc"},
-				{Text: "abc"},
-				{Text: "abc"},
-			},
-		},
-	},
-	{
-		Name:    "star any",
-		Grammar: "A <- .*",
-		Input:   "abc",
-		Pos:     len("abc"),
-		Node: &peg.Node{
-			Name: "A",
-			Text: "abc",
-			Kids: []*peg.Node{
-				{Text: "a"},
-				{Text: "b"},
-				{Text: "c"},
-			},
-		},
-	},
-	{
-		Name:    "star charclass",
-		Grammar: "A <- [abc]*",
-		Input:   "abc",
-		Pos:     len("abc"),
-		Node: &peg.Node{
-			Name: "A",
-			Text: "abc",
-			Kids: []*peg.Node{
-				{Text: "a"},
-				{Text: "b"},
-				{Text: "c"},
-			},
-		},
-	},
-	{
-		Name:    "star neg charclass",
-		Grammar: "A <- [^abc]*",
-		Input:   "XYZ",
-		Pos:     len("XYZ"),
-		Node: &peg.Node{
-			Name: "A",
-			Text: "XYZ",
-			Kids: []*peg.Node{
-				{Text: "X"},
-				{Text: "Y"},
-				{Text: "Z"},
-			},
-		},
-	},
-	{
-		Name:    "star ident",
-		Grammar: "A <- B*\nB <- 'abc'",
-		Input:   "abcabc",
-		Pos:     len("abcabc"),
-		Node: &peg.Node{
-			Name: "A",
-			Text: "abcabc",
-			Kids: []*peg.Node{
-				{
-					Name: "B",
-					Text: "abc",
-					Kids: []*peg.Node{{Text: "abc"}},
-				},
-				{
-					Name: "B",
-					Text: "abc",
-					Kids: []*peg.Node{{Text: "abc"}},
-				},
-			},
-		},
-	},
-	{
-		Name:    "star subexpr",
-		Grammar: "A <- ('a' 'b' 'c')*",
-		Input:   "abcabc",
-		Pos:     len("abcabc"),
-		Node: &peg.Node{
-			Name: "A",
-			Text: "abcabc",
-			Kids: []*peg.Node{
-				{
-					Text: "abc",
-					Kids: []*peg.Node{
-						{Text: "a"},
-						{Text: "b"},
-						{Text: "c"},
-					},
-				},
-				{
-					Text: "abc",
-					Kids: []*peg.Node{
-						{Text: "a"},
-						{Text: "b"},
-						{Text: "c"},
-					},
-				},
-			},
-		},
-	},
-	{
-		Name:    "plus match 1",
-		Grammar: "A <- 'abc'+",
-		Input:   "abc",
-		Pos:     len("abc"),
-		Node: &peg.Node{
-			Name: "A",
-			Text: "abc",
-			Kids: []*peg.Node{{Text: "abc"}},
-		},
-	},
-	{
-		Name:    "plus match >1",
-		Grammar: "A <- 'abc'+",
-		Input:   "abcabcabcxyz",
-		Pos:     len("abcabcabc"),
-		Node: &peg.Node{
-			Name: "A",
-			Text: "abcabcabc",
-			Kids: []*peg.Node{
-				{Text: "abc"},
-				{Text: "abc"},
-				{Text: "abc"},
-			},
-		},
-	},
-	{
-		Name:    "plus mismatch",
-		Grammar: "A <- 'abc'+",
-		Input:   "xyz",
-		Pos:     0,
-		Fail: &peg.Fail{
-			Name: "A",
-			Kids: []*peg.Fail{
-				{Want: `"abc"`},
-			},
-		},
-	},
-	{
-		Name:    "plus mismatch EOF",
-		Grammar: "A <- 'abc'+",
-		Input:   "",
-		Pos:     0,
-		Fail: &peg.Fail{
-			Name: "A",
-			Kids: []*peg.Fail{
-				{Want: `"abc"`},
-			},
-		},
-	},
-	{
-		Name:    "plus any match",
-		Grammar: "A <- .+",
-		Input:   "abc",
-		Pos:     len("abc"),
-		Node: &peg.Node{
-			Name: "A",
-			Text: "abc",
-			Kids: []*peg.Node{
-				{Text: "a"},
-				{Text: "b"},
-				{Text: "c"},
-			},
-		},
-	},
-	{
-		Name:    "plus any mismatch",
-		Grammar: "A <- .+",
-		Input:   "",
-		Pos:     0,
-		Fail: &peg.Fail{
-			Name: "A",
-			Kids: []*peg.Fail{
-				{Want: `.`},
-			},
-		},
-	},
-	{
-		Name:    "plus charclass match",
-		Grammar: "A <- [abc]+",
-		Input:   "abc",
-		Pos:     len("abc"),
-		Node: &peg.Node{
-			Name: "A",
-			Text: "abc",
-			Kids: []*peg.Node{
-				{Text: "a"},
-				{Text: "b"},
-				{Text: "c"},
-			},
-		},
-	},
-	{
-		Name:    "plus charclass mismatch",
-		Grammar: "A <- [abc]+",
-		Input:   "XYZ",
-		Pos:     0,
-		Fail: &peg.Fail{
-			Name: "A",
-			Kids: []*peg.Fail{
-				{Want: `[abc]`},
-			},
-		},
-	},
-	{
-		Name:    "plus neg charclass match",
-		Grammar: "A <- [^abc]+",
-		Input:   "XYZ",
-		Pos:     len("XYZ"),
-		Node: &peg.Node{
-			Name: "A",
-			Text: "XYZ",
-			Kids: []*peg.Node{
-				{Text: "X"},
-				{Text: "Y"},
-				{Text: "Z"},
-			},
-		},
-	},
-	{
-		Name:    "plus neg charclass mismatch",
-		Grammar: "A <- [^abc]+",
-		Input:   "abc",
-		Pos:     0,
-		Fail: &peg.Fail{
-			Name: "A",
-			Kids: []*peg.Fail{
-				{Want: `[^abc]`},
-			},
-		},
-	},
-	{
-		Name:    "plus ident match",
-		Grammar: "A <- B+\nB <- 'abc'",
-		Input:   "abcabc",
-		Pos:     len("abcabc"),
-		Node: &peg.Node{
-			Name: "A",
-			Text: "abcabc",
-			Kids: []*peg.Node{
-				{
-					Name: "B",
-					Text: "abc",
-					Kids: []*peg.Node{{Text: "abc"}},
-				},
-				{
-					Name: "B",
-					Text: "abc",
-					Kids: []*peg.Node{{Text: "abc"}},
-				},
-			},
-		},
-	},
-	{
-		Name:    "plus ident mismatch",
-		Grammar: "A <- B+\nB <- 'abc'",
-		Input:   "xyz",
-		Pos:     0,
-		Fail: &peg.Fail{
-			Name: "A",
-			Kids: []*peg.Fail{
-				{
-					Name: "B",
-					Kids: []*peg.Fail{
-						{Want: `"abc"`},
-					},
-				},
-			},
-		},
-	},
-	{
-		Name:    "plus subexpr match",
-		Grammar: "A <- ('a' 'b' 'c')+",
-		Input:   "abcabc",
-		Pos:     len("abcabc"),
-		Node: &peg.Node{
-			Name: "A",
-			Text: "abcabc",
-			Kids: []*peg.Node{
-				{
-					Text: "abc",
-					Kids: []*peg.Node{
-						{Text: "a"},
-						{Text: "b"},
-						{Text: "c"},
-					},
-				},
-				{
-					Text: "abc",
-					Kids: []*peg.Node{
-						{Text: "a"},
-						{Text: "b"},
-						{Text: "c"},
-					},
-				},
-			},
-		},
-	},
-	{
-		Name:    "plus subexpr mismatch",
-		Grammar: "A <- ('a' 'b' 'c')+",
-		Input:   "xyz",
-		Pos:     0,
-		Fail: &peg.Fail{
-			Name: "A",
-			Kids: []*peg.Fail{
-				{Want: `"a"`},
-			},
-		},
-	},
-	{
-		Name:    "question match 0",
-		Grammar: "A <- 'abc'?",
-		Input:   "xyz",
-		Pos:     0,
-		Node: &peg.Node{
-			Name: "A",
-		},
-	},
-	{
-		Name:    "question match 0 EOF",
-		Grammar: "A <- 'abc'?",
-		Input:   "xyz",
-		Pos:     0,
-		Node: &peg.Node{
-			Name: "A",
-		},
-	},
-	{
-		Name:    "question match 1",
-		Grammar: "A <- 'abc'?",
-		Input:   "abcabc",
-		Pos:     len("abc"),
-		Node: &peg.Node{
-			Name: "A",
-			Text: "abc",
-			Kids: []*peg.Node{{Text: "abc"}},
-		},
-	},
-	{
-		Name:    "question any",
-		Grammar: "A <- .?",
-		Input:   "a",
-		Pos:     len("a"),
-		Node: &peg.Node{
-			Name: "A",
-			Text: "a",
-			Kids: []*peg.Node{{Text: "a"}},
-		},
-	},
-	{
-		Name:    "question charclass",
-		Grammar: "A <- [abc]?",
-		Input:   "a",
-		Pos:     len("a"),
-		Node: &peg.Node{
-			Name: "A",
-			Text: "a",
-			Kids: []*peg.Node{{Text: "a"}},
-		},
-	},
-	{
-		Name:    "question neg charclass",
-		Grammar: "A <- [^abc]?",
-		Input:   "X",
-		Pos:     len("X"),
-		Node: &peg.Node{
-			Name: "A",
-			Text: "X",
-			Kids: []*peg.Node{{Text: "X"}},
-		},
-	},
-	{
-		Name:    "question ident",
-		Grammar: "A <- B?\nB <- 'abc'",
-		Input:   "abc",
-		Pos:     len("abc"),
-		Node: &peg.Node{
-			Name: "A",
-			Text: "abc",
-			Kids: []*peg.Node{
-				{
-					Name: "B",
-					Text: "abc",
-					Kids: []*peg.Node{{Text: "abc"}},
-				},
-			},
-		},
-	},
-	{
-		Name:    "question match subexpr",
-		Grammar: "A <- ('a' 'b' 'c')?",
-		Input:   "abc",
-		Pos:     len("abc"),
-		Node: &peg.Node{
-			Name: "A",
-			Text: "abc",
-			Kids: []*peg.Node{
-				{
-					Text: "abc",
-					Kids: []*peg.Node{
-						{Text: "a"},
-						{Text: "b"},
-						{Text: "c"},
-					},
-				},
-			},
-		},
-	},
-	{
-		Name:    "pos pred match",
-		Grammar: "A <- &'abc'",
-		Input:   "abc",
-		Pos:     0,
-		Node: &peg.Node{
-			Name: "A",
-		},
-	},
-	{
-		Name:    "pos pred mismatch",
-		Grammar: "A <- &'abc'",
-		Input:   "xyz",
-		Pos:     0,
-		Fail: &peg.Fail{
-			Name: "A",
-			Kids: []*peg.Fail{
-				{Want: `&"abc"`},
-			},
-		},
-	},
-	{
-		Name:    "pos pred any match",
-		Grammar: "A <- &.",
-		Input:   "a",
-		Pos:     0,
-		Node: &peg.Node{
-			Name: "A",
-		},
-	},
-	{
-		Name:    "pos pred any mismatch",
-		Grammar: "A <- &.",
-		Input:   "",
-		Pos:     0,
-		Fail: &peg.Fail{
-			Name: "A",
-			Kids: []*peg.Fail{
-				{Want: `&.`},
-			},
-		},
-	},
-	{
-		Name:    "pos pred charclass match",
-		Grammar: "A <- &[abc]",
-		Input:   "a",
-		Pos:     0,
-		Node: &peg.Node{
-			Name: "A",
-		},
-	},
-	{
-		Name:    "pos pred charclass mismatch",
-		Grammar: "A <- &[abc]",
-		Input:   "X",
-		Pos:     0,
-		Fail: &peg.Fail{
-			Name: "A",
-			Kids: []*peg.Fail{
-				{Want: `&[abc]`},
-			},
-		},
-	},
-	{
-		Name:    "pos pred neg charclass match",
-		Grammar: "A <- &[^abc]",
-		Input:   "X",
-		Pos:     0,
-		Node: &peg.Node{
-			Name: "A",
-		},
-	},
-	{
-		Name:    "pos pred neg charclass mismatch",
-		Grammar: "A <- &[^abc]",
-		Input:   "a",
-		Pos:     0,
-		Fail: &peg.Fail{
-			Name: "A",
-			Kids: []*peg.Fail{
-				{Want: `&[^abc]`},
-			},
-		},
-	},
-	{
-		Name:    "neg pred match",
-		Grammar: "A <- !'abc'",
-		Input:   "xyz",
-		Pos:     0,
-		Node: &peg.Node{
-			Name: "A",
-		},
-	},
-	{
-		Name:    "neg pred mismatch",
-		Grammar: "A <- !'abc'",
-		Input:   "abc",
-		Pos:     0,
-		Fail: &peg.Fail{
-			Name: "A",
-			Kids: []*peg.Fail{
-				{Want: `!"abc"`},
-			},
-		},
-	},
-	{
-		Name:    "neg pred any match",
-		Grammar: "A <- !.",
-		Input:   "",
-		Pos:     0,
-		Node: &peg.Node{
-			Name: "A",
-		},
-	},
-	{
-		Name:    "neg pred any mismatch",
-		Grammar: "A <- !.",
-		Input:   "a",
-		Pos:     0,
-		Fail: &peg.Fail{
-			Name: "A",
-			Kids: []*peg.Fail{
-				{Want: `!.`},
-			},
-		},
-	},
-	{
-		Name:    "neg pred charclass match",
-		Grammar: "A <- ![abc]",
-		Input:   "x",
-		Pos:     0,
-		Node: &peg.Node{
-			Name: "A",
-		},
-	},
-	{
-		Name:    "neg pred charclass mismatch",
-		Grammar: "A <- ![abc]",
-		Input:   "a",
-		Pos:     0,
-		Fail: &peg.Fail{
-			Name: "A",
-			Kids: []*peg.Fail{
-				{Want: `![abc]`},
-			},
-		},
-	},
-	{
-		Name:    "neg pred neg charclass match",
-		Grammar: "A <- ![^abc]",
-		Input:   "a",
-		Pos:     0,
-		Node: &peg.Node{
-			Name: "A",
-		},
-	},
-	{
-		Name:    "neg pred neg charclass mismatch",
-		Grammar: "A <- ![^abc]",
-		Input:   "x",
-		Pos:     0,
-		Fail: &peg.Fail{
-			Name: "A",
-			Kids: []*peg.Fail{
-				{Want: `![^abc]`},
-			},
-		},
-	},
-	{
-		Name:    "neg pred literal match",
-		Grammar: "A <- !B\nB <- 'abc'",
-		Input:   "xyz",
-		Pos:     0,
-		Node: &peg.Node{
-			Name: "A",
-		},
-	},
-	{
-		Name:    "neg pred neg charclass mismatch",
-		Grammar: "A <- !B\nB <- 'abc'",
-		Input:   "abc",
-		Pos:     0,
-		Fail: &peg.Fail{
-			Name: "A",
-			Kids: []*peg.Fail{
-				{Want: "!B"},
-			},
-		},
-	},
-	{
-		Name:    "sequence match",
-		Grammar: "A <- 'abc' 'def' 'ghi'",
-		Input:   "abcdefghi",
-		Pos:     len("abcdefghi"),
-		Node: &peg.Node{
-			Name: "A",
-			Text: "abcdefghi",
-			Kids: []*peg.Node{
-				{Text: "abc"},
-				{Text: "def"},
-				{Text: "ghi"},
-			},
-		},
-	},
-	{
-		Name:    "sequence mismatch first",
-		Grammar: "A <- 'abc' 'def' 'ghi'",
-		Input:   "XYZdefghi",
-		Pos:     0,
-		Fail: &peg.Fail{
-			Name: "A",
-			Kids: []*peg.Fail{
-				{Want: `"abc"`},
-			},
-		},
-	},
-	{
-		Name:    "sequence mismatch mid",
-		Grammar: "A <- 'abc' 'def' 'ghi'",
-		Input:   "abcXYZghi",
-		Pos:     len("abc"), // error after abc
-		Fail: &peg.Fail{
-			Name: "A",
-			Kids: []*peg.Fail{
-				{
-					Pos:  len("abc"),
-					Want: `"def"`,
-				},
-			},
-		},
-	},
-	{
-		Name:    "sequence mismatch last",
-		Grammar: "A <- 'abc' 'def' 'ghi'",
-		Input:   "abcdefXYZ",
-		Pos:     len("abcdef"), // error after abcdef
-		Fail: &peg.Fail{
-			Name: "A",
-			Kids: []*peg.Fail{
-				{
-					Pos:  len("abcdef"),
-					Want: `"ghi"`,
-				},
-			},
-		},
-	},
-	{
-		Name:    "choice match first",
-		Grammar: "A <- 'abc' / 'def' / 'ghi'",
-		Input:   "abc",
-		Pos:     len("abc"),
-		Node: &peg.Node{
-			Name: "A",
-			Text: "abc",
-			Kids: []*peg.Node{{Text: "abc"}},
-		},
-	},
-	{
-		Name:    "choice match mid",
-		Grammar: "A <- 'abc' / 'def' / 'ghi'",
-		Input:   "def",
-		Pos:     len("def"),
-		Node: &peg.Node{
-			Name: "A",
-			Text: "def",
-			Kids: []*peg.Node{{Text: "def"}},
-		},
-	},
-	{
-		Name:    "choice match last",
-		Grammar: "A <- 'abc' / 'def' / 'ghi'",
-		Input:   "ghi",
-		Pos:     len("ghi"),
-		Node: &peg.Node{
-			Name: "A",
-			Text: "ghi",
-			Kids: []*peg.Node{{Text: "ghi"}},
-		},
-	},
-	{
-		Name:    "choice mismatch",
-		Grammar: "A <- 'abc' / 'def' / 'ghi'",
-		Input:   "XYZ",
-		Pos:     0,
-		Fail: &peg.Fail{
-			Name: "A",
-			Kids: []*peg.Fail{
-				{Want: `"abc"`},
-				{Want: `"def"`},
-				{Want: `"ghi"`},
-			},
-		},
-	},
-	{
-		Name:    "choice that can't fail empty",
-		Grammar: "A <- 'abc' / 'def'?",
-		Input:   "XYZ",
-		Pos:     0,
-		Node: &peg.Node{
-			Name: "A",
-		},
-	},
-	{
-		Name:    "choice that can't fail non-empty",
-		Grammar: "A <- 'abc' / 'def'?",
-		Input:   "def",
-		Pos:     len("def"),
-		Node: &peg.Node{
-			Name: "A",
-			Text: "def",
-			Kids: []*peg.Node{{Text: "def"}},
-		},
-	},
-	{
-		Name:    "choice after sequence match first",
-		Grammar: "A <- '123' ('abc'/ 'αβξ')",
-		Input:   "123abc",
-		Pos:     len("123abc"),
-		Node: &peg.Node{
-			Name: "A",
-			Text: "123abc",
-			Kids: []*peg.Node{
-				{Text: "123"},
-				{
-					Text: "abc",
-					Kids: []*peg.Node{{Text: "abc"}},
-				},
-			},
-		},
-	},
-	{
-		Name:    "choice after sequence match second",
-		Grammar: "A <- '123' ('abc'/ 'αβξ')",
-		Input:   "123αβξ",
-		Pos:     len("123αβξ"),
-		Node: &peg.Node{
-			Name: "A",
-			Text: "123αβξ",
-			Kids: []*peg.Node{
-				{Text: "123"},
-				{
+		grammar: "A <- 'αβξ'",
+		cases: []genTestCase{
+			{
+				name:  "literal match non-ASCII",
+				input: "αβξ",
+				pos:   len("αβξ"),
+				node: &peg.Node{
+					Name: "A",
 					Text: "αβξ",
 					Kids: []*peg.Node{{Text: "αβξ"}},
 				},
@@ -1473,68 +457,294 @@ var testCases = []test{
 		},
 	},
 	{
-		Name:    "choice after sequence mismatch",
-		Grammar: "A <- '123' ('abc'/ 'αβξ')",
-		Input:   "123XYZ",
-		Pos:     len("123"), // error after 123
-		Fail: &peg.Fail{
-			Name: "A",
-			Kids: []*peg.Fail{
-				{
-					Pos:  len("123"),
-					Want: `"abc"`,
+		grammar: "A <- .",
+		cases: []genTestCase{
+			{
+				name:  "any match",
+				input: "abc",
+				pos:   len("a"),
+				node: &peg.Node{
+					Name: "A",
+					Text: "a",
+					Kids: []*peg.Node{{Text: "a"}},
 				},
-				{
-					Pos:  len("123"),
-					Want: `"αβξ"`,
+			},
+			{
+				name:  "any match non-ASCII",
+				input: "αβξ",
+				pos:   len("α"),
+				node: &peg.Node{
+					Name: "A",
+					Text: "α",
+					Kids: []*peg.Node{{Text: "α"}},
+				},
+			},
+			{
+				name:  "any mismatch",
+				input: "",
+				pos:   0,
+				fail: &peg.Fail{
+					Name: "A",
+					Kids: []*peg.Fail{
+						{Want: `.`},
+					},
 				},
 			},
 		},
 	},
 	{
-		Name:    "rule memo success",
-		Grammar: "A <- 'a' B 'c' / 'a' B 'd'\nB <- 'B'",
-		Input:   "aBd",
-		Pos:     len("aBd"),
-		Node: &peg.Node{
-			Name: "A",
-			Text: "aBd",
-			Kids: []*peg.Node{
-				{Text: "a"},
-				{
-					Name: "B",
+		grammar: "A <- [abcA-C☹☺α-ξ]",
+		cases: []genTestCase{
+			{
+				name:  "charclass match rune",
+				input: "a",
+				pos:   len("a"),
+				node: &peg.Node{
+					Name: "A",
+					Text: "a",
+					Kids: []*peg.Node{{Text: "a"}},
+				},
+			},
+			{
+				name:  "charclass match range",
+				input: "B",
+				pos:   len("B"),
+				node: &peg.Node{
+					Name: "A",
 					Text: "B",
 					Kids: []*peg.Node{{Text: "B"}},
 				},
-				{Text: "d"},
+			},
+			{
+				name:  "charclass match non-ASCII rune",
+				input: "☺",
+				pos:   len("☺"),
+				node: &peg.Node{
+					Name: "A",
+					Text: "☺",
+					Kids: []*peg.Node{{Text: "☺"}},
+				},
+			},
+			{
+				name:  "charclass match non-ASCII range",
+				input: "β",
+				pos:   len("β"),
+				node: &peg.Node{
+					Name: "A",
+					Text: "β",
+					Kids: []*peg.Node{{Text: "β"}},
+				},
+			},
+			{
+				name:  "charclass mismatch rune",
+				input: "z",
+				pos:   0,
+				fail: &peg.Fail{
+					Name: "A",
+					Kids: []*peg.Fail{
+						{Want: `[abcA-C☹☺α-ξ]`},
+					},
+				},
+			},
+			{
+				name:  "charclass mismatch before range",
+				input: "@", // just before A
+				pos:   0,
+				fail: &peg.Fail{
+					Name: "A",
+					Kids: []*peg.Fail{
+						{Want: `[abcA-C☹☺α-ξ]`},
+					},
+				},
+			},
+			{
+				name:  "charclass mismatch after range",
+				input: "D", // just after C
+				pos:   0,
+				fail: &peg.Fail{
+					Name: "A",
+					Kids: []*peg.Fail{
+						{Want: `[abcA-C☹☺α-ξ]`},
+					},
+				},
+			},
+			{
+				name:  "charclass mismatch non-ASCII rune",
+				input: "·",
+				pos:   0,
+				fail: &peg.Fail{
+					Name: "A",
+					Kids: []*peg.Fail{
+						{Want: `[abcA-C☹☺α-ξ]`},
+					},
+				},
 			},
 		},
 	},
 	{
-		Name:    "rule memo failure",
-		Grammar: "A <- 'a' B 'c' / 'a' B 'd'\nB <- 'B'",
-		Input:   "aAd",
-		Pos:     len("a"), // error after a
-		Fail: &peg.Fail{
-			Name: "A",
-			Kids: []*peg.Fail{
-				{
-					Name: "B",
-					Pos:  len("a"),
+		grammar: "A <- [^abcA-C☹☺α-ξ]",
+		cases: []genTestCase{
+			{
+				name:  "neg charclass match rune",
+				input: "z",
+				pos:   len("z"),
+				node: &peg.Node{
+					Name: "A",
+					Text: "z",
+					Kids: []*peg.Node{{Text: "z"}},
+				},
+			},
+			{
+				name:  "neg charclass match before range",
+				input: "@", // just before A
+				pos:   len("@"),
+				node: &peg.Node{
+					Name: "A",
+					Text: "@",
+					Kids: []*peg.Node{{Text: "@"}},
+				},
+			},
+			{
+				name:  "neg charclass match after range",
+				input: "D", // just after C
+				pos:   len("D"),
+				node: &peg.Node{
+					Name: "A",
+					Text: "D",
+					Kids: []*peg.Node{{Text: "D"}},
+				},
+			},
+			{
+				name:  "neg charclass match non-ASCII rune",
+				input: "·",
+				pos:   len("·"),
+				node: &peg.Node{
+					Name: "A",
+					Text: "·",
+					Kids: []*peg.Node{{Text: "·"}},
+				},
+			},
+			{
+				name:  "neg charclass mismatch rune",
+				input: "a",
+				pos:   0,
+				fail: &peg.Fail{
+					Name: "A",
 					Kids: []*peg.Fail{
+						{Want: `[^abcA-C☹☺α-ξ]`},
+					},
+				},
+			},
+			{
+				name:  "neg charclass mismatch begin range",
+				input: "A",
+				pos:   0,
+				fail: &peg.Fail{
+					Name: "A",
+					Kids: []*peg.Fail{
+						{Want: `[^abcA-C☹☺α-ξ]`},
+					},
+				},
+			},
+			{
+				name:  "neg charclass mismatch mid range",
+				input: "B",
+				pos:   0,
+				fail: &peg.Fail{
+					Name: "A",
+					Kids: []*peg.Fail{
+						{Want: `[^abcA-C☹☺α-ξ]`},
+					},
+				},
+			},
+			{
+				name:  "neg charclass mismatch end range",
+				input: "C",
+				pos:   0,
+				fail: &peg.Fail{
+					Name: "A",
+					Kids: []*peg.Fail{
+						{Want: `[^abcA-C☹☺α-ξ]`},
+					},
+				},
+			},
+			{
+				name:  "neg charclass mismatch non-ASCII rune",
+				input: "☺",
+				pos:   0,
+				fail: &peg.Fail{
+					Name: "A",
+					Kids: []*peg.Fail{
+						{Want: `[^abcA-C☹☺α-ξ]`},
+					},
+				},
+			},
+			{
+				name:  "neg charclass mismatch begin non-ASCII range",
+				input: "α",
+				pos:   0,
+				fail: &peg.Fail{
+					Name: "A",
+					Kids: []*peg.Fail{
+						{Want: `[^abcA-C☹☺α-ξ]`},
+					},
+				},
+			},
+			{
+				name:  "neg charclass mismatch mid non-ASCII range",
+				input: "β",
+				pos:   0,
+				fail: &peg.Fail{
+					Name: "A",
+					Kids: []*peg.Fail{
+						{Want: `[^abcA-C☹☺α-ξ]`},
+					},
+				},
+			},
+			{
+				name:  "neg charclass mismatch end non-ASCII range",
+				input: "ξ",
+				pos:   0,
+				fail: &peg.Fail{
+					Name: "A",
+					Kids: []*peg.Fail{
+						{Want: `[^abcA-C☹☺α-ξ]`},
+					},
+				},
+			},
+		},
+	},
+	{
+		grammar: "A <- B\nB <- 'abc'",
+		cases: []genTestCase{
+			{
+				name:  "ident match",
+				input: "abc",
+				pos:   len("abc"),
+				node: &peg.Node{
+					Name: "A",
+					Text: "abc",
+					Kids: []*peg.Node{
 						{
-							Pos:  len("a"),
-							Want: `"B"`,
+							Name: "B",
+							Text: "abc",
+							Kids: []*peg.Node{{Text: "abc"}},
 						},
 					},
 				},
-				{
-					Name: "B",
-					Pos:  len("a"),
+			},
+			{
+				name:  "ident mismatch",
+				input: "abz",
+				pos:   0,
+				fail: &peg.Fail{
+					Name: "A",
 					Kids: []*peg.Fail{
 						{
-							Pos:  len("a"),
-							Want: `"B"`,
+							Name: "B",
+							Kids: []*peg.Fail{
+								{Want: `"abc"`},
+							},
 						},
 					},
 				},
@@ -1542,16 +752,762 @@ var testCases = []test{
 		},
 	},
 	{
-		Name:    "latest error",
-		Grammar: "A <- B 'x'\nB <- 'abc' 'def' / .",
-		Input:   "abcxyz",
-		Pos:     len("abc"), // latest error is after abc
-		Fail: &peg.Fail{
-			Name: "A",
-			Kids: []*peg.Fail{
-				{
-					Name: "B",
-					Pos:  0,
+		grammar: "A <- 'abc'*",
+		cases: []genTestCase{
+			{
+				name:  "star match 0",
+				input: "xyz",
+				pos:   0,
+				node: &peg.Node{
+					Name: "A",
+				},
+			},
+			{
+				name:  "star match 0 EOF",
+				input: "xyz",
+				pos:   0,
+				node: &peg.Node{
+					Name: "A",
+				},
+			},
+			{
+				name:  "star match 1",
+				input: "abc",
+				pos:   len("abc"),
+				node: &peg.Node{
+					Name: "A",
+					Text: "abc",
+					Kids: []*peg.Node{{Text: "abc"}},
+				},
+			},
+			{
+				name:  "star match >1",
+				input: "abcabcabcxyz",
+				pos:   len("abcabcabc"),
+				node: &peg.Node{
+					Name: "A",
+					Text: "abcabcabc",
+					Kids: []*peg.Node{
+						{Text: "abc"},
+						{Text: "abc"},
+						{Text: "abc"},
+					},
+				},
+			},
+		},
+	},
+	{
+		grammar: "A <- .*",
+		cases: []genTestCase{
+			{
+				name:  "star any",
+				input: "abc",
+				pos:   len("abc"),
+				node: &peg.Node{
+					Name: "A",
+					Text: "abc",
+					Kids: []*peg.Node{
+						{Text: "a"},
+						{Text: "b"},
+						{Text: "c"},
+					},
+				},
+			},
+		},
+	},
+	{
+		grammar: "A <- [abc]*",
+		cases: []genTestCase{
+			{
+				name:  "star charclass",
+				input: "abc",
+				pos:   len("abc"),
+				node: &peg.Node{
+					Name: "A",
+					Text: "abc",
+					Kids: []*peg.Node{
+						{Text: "a"},
+						{Text: "b"},
+						{Text: "c"},
+					},
+				},
+			},
+		},
+	},
+	{
+		grammar: "A <- [^abc]*",
+		cases: []genTestCase{
+			{
+				name:  "star neg charclass",
+				input: "XYZ",
+				pos:   len("XYZ"),
+				node: &peg.Node{
+					Name: "A",
+					Text: "XYZ",
+					Kids: []*peg.Node{
+						{Text: "X"},
+						{Text: "Y"},
+						{Text: "Z"},
+					},
+				},
+			},
+		},
+	},
+	{
+		grammar: "A <- B*\nB <- 'abc'",
+		cases: []genTestCase{
+			{
+				name:  "star ident",
+				input: "abcabc",
+				pos:   len("abcabc"),
+				node: &peg.Node{
+					Name: "A",
+					Text: "abcabc",
+					Kids: []*peg.Node{
+						{
+							Name: "B",
+							Text: "abc",
+							Kids: []*peg.Node{{Text: "abc"}},
+						},
+						{
+							Name: "B",
+							Text: "abc",
+							Kids: []*peg.Node{{Text: "abc"}},
+						},
+					},
+				},
+			},
+		},
+	},
+	{
+		grammar: "A <- ('a' 'b' 'c')*",
+		cases: []genTestCase{
+			{
+				name:  "star subexpr",
+				input: "abcabc",
+				pos:   len("abcabc"),
+				node: &peg.Node{
+					Name: "A",
+					Text: "abcabc",
+					Kids: []*peg.Node{
+						{
+							Text: "abc",
+							Kids: []*peg.Node{
+								{Text: "a"},
+								{Text: "b"},
+								{Text: "c"},
+							},
+						},
+						{
+							Text: "abc",
+							Kids: []*peg.Node{
+								{Text: "a"},
+								{Text: "b"},
+								{Text: "c"},
+							},
+						},
+					},
+				},
+			},
+		},
+	},
+	{
+		grammar: "A <- 'abc'+",
+		cases: []genTestCase{
+			{
+				name:  "plus match 1",
+				input: "abc",
+				pos:   len("abc"),
+				node: &peg.Node{
+					Name: "A",
+					Text: "abc",
+					Kids: []*peg.Node{{Text: "abc"}},
+				},
+			},
+			{
+				name:  "plus match >1",
+				input: "abcabcabcxyz",
+				pos:   len("abcabcabc"),
+				node: &peg.Node{
+					Name: "A",
+					Text: "abcabcabc",
+					Kids: []*peg.Node{
+						{Text: "abc"},
+						{Text: "abc"},
+						{Text: "abc"},
+					},
+				},
+			},
+			{
+				name:  "plus mismatch",
+				input: "xyz",
+				pos:   0,
+				fail: &peg.Fail{
+					Name: "A",
+					Kids: []*peg.Fail{
+						{Want: `"abc"`},
+					},
+				},
+			},
+			{
+				name:  "plus mismatch EOF",
+				input: "",
+				pos:   0,
+				fail: &peg.Fail{
+					Name: "A",
+					Kids: []*peg.Fail{
+						{Want: `"abc"`},
+					},
+				},
+			},
+		},
+	},
+	{
+		grammar: "A <- .+",
+		cases: []genTestCase{
+			{
+				name:  "plus any match",
+				input: "abc",
+				pos:   len("abc"),
+				node: &peg.Node{
+					Name: "A",
+					Text: "abc",
+					Kids: []*peg.Node{
+						{Text: "a"},
+						{Text: "b"},
+						{Text: "c"},
+					},
+				},
+			},
+			{
+				name:  "plus any mismatch",
+				input: "",
+				pos:   0,
+				fail: &peg.Fail{
+					Name: "A",
+					Kids: []*peg.Fail{
+						{Want: `.`},
+					},
+				},
+			},
+		},
+	},
+	{
+		grammar: "A <- [abc]+",
+		cases: []genTestCase{
+			{
+				name:  "plus charclass match",
+				input: "abc",
+				pos:   len("abc"),
+				node: &peg.Node{
+					Name: "A",
+					Text: "abc",
+					Kids: []*peg.Node{
+						{Text: "a"},
+						{Text: "b"},
+						{Text: "c"},
+					},
+				},
+			},
+			{
+				name:  "plus charclass mismatch",
+				input: "XYZ",
+				pos:   0,
+				fail: &peg.Fail{
+					Name: "A",
+					Kids: []*peg.Fail{
+						{Want: `[abc]`},
+					},
+				},
+			},
+		},
+	},
+	{
+		grammar: "A <- [^abc]+",
+		cases: []genTestCase{
+			{
+				name:  "plus neg charclass match",
+				input: "XYZ",
+				pos:   len("XYZ"),
+				node: &peg.Node{
+					Name: "A",
+					Text: "XYZ",
+					Kids: []*peg.Node{
+						{Text: "X"},
+						{Text: "Y"},
+						{Text: "Z"},
+					},
+				},
+			},
+			{
+				name:  "plus neg charclass mismatch",
+				input: "abc",
+				pos:   0,
+				fail: &peg.Fail{
+					Name: "A",
+					Kids: []*peg.Fail{
+						{Want: `[^abc]`},
+					},
+				},
+			},
+		},
+	},
+	{
+		grammar: "A <- B+\nB <- 'abc'",
+		cases: []genTestCase{
+			{
+				name:  "plus ident match",
+				input: "abcabc",
+				pos:   len("abcabc"),
+				node: &peg.Node{
+					Name: "A",
+					Text: "abcabc",
+					Kids: []*peg.Node{
+						{
+							Name: "B",
+							Text: "abc",
+							Kids: []*peg.Node{{Text: "abc"}},
+						},
+						{
+							Name: "B",
+							Text: "abc",
+							Kids: []*peg.Node{{Text: "abc"}},
+						},
+					},
+				},
+			},
+			{
+				name:  "plus ident mismatch",
+				input: "xyz",
+				pos:   0,
+				fail: &peg.Fail{
+					Name: "A",
+					Kids: []*peg.Fail{
+						{
+							Name: "B",
+							Kids: []*peg.Fail{
+								{Want: `"abc"`},
+							},
+						},
+					},
+				},
+			},
+		},
+	},
+	{
+		grammar: "A <- ('a' 'b' 'c')+",
+		cases: []genTestCase{
+			{
+				name:  "plus subexpr match",
+				input: "abcabc",
+				pos:   len("abcabc"),
+				node: &peg.Node{
+					Name: "A",
+					Text: "abcabc",
+					Kids: []*peg.Node{
+						{
+							Text: "abc",
+							Kids: []*peg.Node{
+								{Text: "a"},
+								{Text: "b"},
+								{Text: "c"},
+							},
+						},
+						{
+							Text: "abc",
+							Kids: []*peg.Node{
+								{Text: "a"},
+								{Text: "b"},
+								{Text: "c"},
+							},
+						},
+					},
+				},
+			},
+			{
+				name:  "plus subexpr mismatch",
+				input: "xyz",
+				pos:   0,
+				fail: &peg.Fail{
+					Name: "A",
+					Kids: []*peg.Fail{
+						{Want: `"a"`},
+					},
+				},
+			},
+		},
+	},
+	{
+		grammar: "A <- 'abc'?",
+		cases: []genTestCase{
+			{
+				name:  "question match 0",
+				input: "xyz",
+				pos:   0,
+				node: &peg.Node{
+					Name: "A",
+				},
+			},
+			{
+				name:  "question match 0 EOF",
+				input: "xyz",
+				pos:   0,
+				node: &peg.Node{
+					Name: "A",
+				},
+			},
+			{
+				name:  "question match 1",
+				input: "abcabc",
+				pos:   len("abc"),
+				node: &peg.Node{
+					Name: "A",
+					Text: "abc",
+					Kids: []*peg.Node{{Text: "abc"}},
+				},
+			},
+		},
+	},
+	{
+		grammar: "A <- .?",
+		cases: []genTestCase{
+			{
+				name:  "question any",
+				input: "a",
+				pos:   len("a"),
+				node: &peg.Node{
+					Name: "A",
+					Text: "a",
+					Kids: []*peg.Node{{Text: "a"}},
+				},
+			},
+		},
+	},
+	{
+		grammar: "A <- [abc]?",
+		cases: []genTestCase{
+			{
+				name:  "question charclass",
+				input: "a",
+				pos:   len("a"),
+				node: &peg.Node{
+					Name: "A",
+					Text: "a",
+					Kids: []*peg.Node{{Text: "a"}},
+				},
+			},
+		},
+	},
+	{
+		grammar: "A <- [^abc]?",
+		cases: []genTestCase{
+			{
+				name:  "question neg charclass",
+				input: "X",
+				pos:   len("X"),
+				node: &peg.Node{
+					Name: "A",
+					Text: "X",
+					Kids: []*peg.Node{{Text: "X"}},
+				},
+			},
+		},
+	},
+	{
+		grammar: "A <- B?\nB <- 'abc'",
+		cases: []genTestCase{
+			{
+				name:  "question ident",
+				input: "abc",
+				pos:   len("abc"),
+				node: &peg.Node{
+					Name: "A",
+					Text: "abc",
+					Kids: []*peg.Node{
+						{
+							Name: "B",
+							Text: "abc",
+							Kids: []*peg.Node{{Text: "abc"}},
+						},
+					},
+				},
+			},
+		},
+	},
+	{
+		grammar: "A <- ('a' 'b' 'c')?",
+		cases: []genTestCase{
+			{
+				name:  "question match subexpr",
+				input: "abc",
+				pos:   len("abc"),
+				node: &peg.Node{
+					Name: "A",
+					Text: "abc",
+					Kids: []*peg.Node{
+						{
+							Text: "abc",
+							Kids: []*peg.Node{
+								{Text: "a"},
+								{Text: "b"},
+								{Text: "c"},
+							},
+						},
+					},
+				},
+			},
+		},
+	},
+	{
+		grammar: "A <- &'abc'",
+		cases: []genTestCase{
+			{
+				name:  "pos pred match",
+				input: "abc",
+				pos:   0,
+				node: &peg.Node{
+					Name: "A",
+				},
+			},
+			{
+				name:  "pos pred mismatch",
+				input: "xyz",
+				pos:   0,
+				fail: &peg.Fail{
+					Name: "A",
+					Kids: []*peg.Fail{
+						{Want: `&"abc"`},
+					},
+				},
+			},
+		},
+	},
+	{
+		grammar: "A <- &.",
+		cases: []genTestCase{
+			{
+				name:  "pos pred any match",
+				input: "a",
+				pos:   0,
+				node: &peg.Node{
+					Name: "A",
+				},
+			},
+			{
+				name:  "pos pred any mismatch",
+				input: "",
+				pos:   0,
+				fail: &peg.Fail{
+					Name: "A",
+					Kids: []*peg.Fail{
+						{Want: `&.`},
+					},
+				},
+			},
+		},
+	},
+	{
+		grammar: "A <- &[abc]",
+		cases: []genTestCase{
+			{
+				name:  "pos pred charclass match",
+				input: "a",
+				pos:   0,
+				node: &peg.Node{
+					Name: "A",
+				},
+			},
+			{
+				name:  "pos pred charclass mismatch",
+				input: "X",
+				pos:   0,
+				fail: &peg.Fail{
+					Name: "A",
+					Kids: []*peg.Fail{
+						{Want: `&[abc]`},
+					},
+				},
+			},
+		},
+	},
+	{
+		grammar: "A <- &[^abc]",
+		cases: []genTestCase{
+			{
+				name:  "pos pred neg charclass match",
+				input: "X",
+				pos:   0,
+				node: &peg.Node{
+					Name: "A",
+				},
+			},
+			{
+				name:  "pos pred neg charclass mismatch",
+				input: "a",
+				pos:   0,
+				fail: &peg.Fail{
+					Name: "A",
+					Kids: []*peg.Fail{
+						{Want: `&[^abc]`},
+					},
+				},
+			},
+		},
+	},
+	{
+		grammar: "A <- !'abc'",
+		cases: []genTestCase{
+			{
+				name:  "neg pred match",
+				input: "xyz",
+				pos:   0,
+				node: &peg.Node{
+					Name: "A",
+				},
+			},
+			{
+				name:  "neg pred mismatch",
+				input: "abc",
+				pos:   0,
+				fail: &peg.Fail{
+					Name: "A",
+					Kids: []*peg.Fail{
+						{Want: `!"abc"`},
+					},
+				},
+			},
+		},
+	},
+	{
+		grammar: "A <- !.",
+		cases: []genTestCase{
+			{
+				name:  "neg pred any match",
+				input: "",
+				pos:   0,
+				node: &peg.Node{
+					Name: "A",
+				},
+			},
+			{
+				name:  "neg pred any mismatch",
+				input: "a",
+				pos:   0,
+				fail: &peg.Fail{
+					Name: "A",
+					Kids: []*peg.Fail{
+						{Want: `!.`},
+					},
+				},
+			},
+		},
+	},
+	{
+		grammar: "A <- ![abc]",
+		cases: []genTestCase{
+			{
+				name:  "neg pred charclass match",
+				input: "x",
+				pos:   0,
+				node: &peg.Node{
+					Name: "A",
+				},
+			},
+			{
+				name:  "neg pred charclass mismatch",
+				input: "a",
+				pos:   0,
+				fail: &peg.Fail{
+					Name: "A",
+					Kids: []*peg.Fail{
+						{Want: `![abc]`},
+					},
+				},
+			},
+		},
+	},
+	{
+		grammar: "A <- ![^abc]",
+		cases: []genTestCase{
+			{
+				name:  "neg pred neg charclass match",
+				input: "a",
+				pos:   0,
+				node: &peg.Node{
+					Name: "A",
+				},
+			},
+			{
+				name:  "neg pred neg charclass mismatch",
+				input: "x",
+				pos:   0,
+				fail: &peg.Fail{
+					Name: "A",
+					Kids: []*peg.Fail{
+						{Want: `![^abc]`},
+					},
+				},
+			},
+		},
+	},
+	{
+		grammar: "A <- !B\nB <- 'abc'",
+		cases: []genTestCase{
+			{
+				name:  "neg pred literal match",
+				input: "xyz",
+				pos:   0,
+				node: &peg.Node{
+					Name: "A",
+				},
+			},
+			{
+				name:  "neg pred neg charclass mismatch",
+				input: "abc",
+				pos:   0,
+				fail: &peg.Fail{
+					Name: "A",
+					Kids: []*peg.Fail{
+						{Want: "!B"},
+					},
+				},
+			},
+		},
+	},
+	{
+		grammar: "A <- 'abc' 'def' 'ghi'",
+		cases: []genTestCase{
+			{
+				name:  "sequence match",
+				input: "abcdefghi",
+				pos:   len("abcdefghi"),
+				node: &peg.Node{
+					Name: "A",
+					Text: "abcdefghi",
+					Kids: []*peg.Node{
+						{Text: "abc"},
+						{Text: "def"},
+						{Text: "ghi"},
+					},
+				},
+			},
+			{
+				name:  "sequence mismatch first",
+				input: "XYZdefghi",
+				pos:   0,
+				fail: &peg.Fail{
+					Name: "A",
+					Kids: []*peg.Fail{
+						{Want: `"abc"`},
+					},
+				},
+			},
+			{
+				name:  "sequence mismatch mid",
+				input: "abcXYZghi",
+				pos:   len("abc"), // error after abc
+				fail: &peg.Fail{
+					Name: "A",
 					Kids: []*peg.Fail{
 						{
 							Pos:  len("abc"),
@@ -1560,18 +1516,240 @@ var testCases = []test{
 					},
 				},
 			},
+			{
+				name:  "sequence mismatch last",
+				input: "abcdefXYZ",
+				pos:   len("abcdef"), // error after abcdef
+				fail: &peg.Fail{
+					Name: "A",
+					Kids: []*peg.Fail{
+						{
+							Pos:  len("abcdef"),
+							Want: `"ghi"`,
+						},
+					},
+				},
+			},
+		},
+	},
+	{
+		grammar: "A <- 'abc' / 'def' / 'ghi'",
+		cases: []genTestCase{
+			{
+				name:  "choice match first",
+				input: "abc",
+				pos:   len("abc"),
+				node: &peg.Node{
+					Name: "A",
+					Text: "abc",
+					Kids: []*peg.Node{{Text: "abc"}},
+				},
+			},
+			{
+				name:  "choice match mid",
+				input: "def",
+				pos:   len("def"),
+				node: &peg.Node{
+					Name: "A",
+					Text: "def",
+					Kids: []*peg.Node{{Text: "def"}},
+				},
+			},
+			{
+				name:  "choice match last",
+				input: "ghi",
+				pos:   len("ghi"),
+				node: &peg.Node{
+					Name: "A",
+					Text: "ghi",
+					Kids: []*peg.Node{{Text: "ghi"}},
+				},
+			},
+			{
+				name:  "choice mismatch",
+				input: "XYZ",
+				pos:   0,
+				fail: &peg.Fail{
+					Name: "A",
+					Kids: []*peg.Fail{
+						{Want: `"abc"`},
+						{Want: `"def"`},
+						{Want: `"ghi"`},
+					},
+				},
+			},
+		},
+	},
+	{
+		grammar: "A <- 'abc' / 'def'?",
+		cases: []genTestCase{
+			{
+				name:  "choice that can't fail empty",
+				input: "XYZ",
+				pos:   0,
+				node: &peg.Node{
+					Name: "A",
+				},
+			},
+			{
+				name:  "choice that can't fail non-empty",
+				input: "def",
+				pos:   len("def"),
+				node: &peg.Node{
+					Name: "A",
+					Text: "def",
+					Kids: []*peg.Node{{Text: "def"}},
+				},
+			},
+		},
+	},
+	{
+		grammar: "A <- '123' ('abc'/ 'αβξ')",
+		cases: []genTestCase{
+			{
+				name:  "choice after sequence match first",
+				input: "123abc",
+				pos:   len("123abc"),
+				node: &peg.Node{
+					Name: "A",
+					Text: "123abc",
+					Kids: []*peg.Node{
+						{Text: "123"},
+						{
+							Text: "abc",
+							Kids: []*peg.Node{{Text: "abc"}},
+						},
+					},
+				},
+			},
+			{
+				name:  "choice after sequence match second",
+				input: "123αβξ",
+				pos:   len("123αβξ"),
+				node: &peg.Node{
+					Name: "A",
+					Text: "123αβξ",
+					Kids: []*peg.Node{
+						{Text: "123"},
+						{
+							Text: "αβξ",
+							Kids: []*peg.Node{{Text: "αβξ"}},
+						},
+					},
+				},
+			},
+			{
+				name:  "choice after sequence mismatch",
+				input: "123XYZ",
+				pos:   len("123"), // error after 123
+				fail: &peg.Fail{
+					Name: "A",
+					Kids: []*peg.Fail{
+						{
+							Pos:  len("123"),
+							Want: `"abc"`,
+						},
+						{
+							Pos:  len("123"),
+							Want: `"αβξ"`,
+						},
+					},
+				},
+			},
+		},
+	},
+	{
+		grammar: "A <- 'a' B 'c' / 'a' B 'd'\nB <- 'B'",
+		cases: []genTestCase{
+			{
+				name:  "rule memo success",
+				input: "aBd",
+				pos:   len("aBd"),
+				node: &peg.Node{
+					Name: "A",
+					Text: "aBd",
+					Kids: []*peg.Node{
+						{Text: "a"},
+						{
+							Name: "B",
+							Text: "B",
+							Kids: []*peg.Node{{Text: "B"}},
+						},
+						{Text: "d"},
+					},
+				},
+			},
+			{
+				name:  "rule memo failure",
+				input: "aAd",
+				pos:   len("a"), // error after a
+				fail: &peg.Fail{
+					Name: "A",
+					Kids: []*peg.Fail{
+						{
+							Name: "B",
+							Pos:  len("a"),
+							Kids: []*peg.Fail{
+								{
+									Pos:  len("a"),
+									Want: `"B"`,
+								},
+							},
+						},
+						{
+							Name: "B",
+							Pos:  len("a"),
+							Kids: []*peg.Fail{
+								{
+									Pos:  len("a"),
+									Want: `"B"`,
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	},
+	{
+		grammar: "A <- B 'x'\nB <- 'abc' 'def' / .",
+		cases: []genTestCase{
+			{
+				name:  "latest error",
+				input: "abcxyz",
+				pos:   len("abc"), // latest error is after abc
+				fail: &peg.Fail{
+					Name: "A",
+					Kids: []*peg.Fail{
+						{
+							Name: "B",
+							Pos:  0,
+							Kids: []*peg.Fail{
+								{
+									Pos:  len("abc"),
+									Want: `"def"`,
+								},
+							},
+						},
+					},
+				},
+			},
 		},
 	},
 	{
 		// Don't report the location of fails in silent exprs, & and !.
-		Name:    "ignore silent fails",
-		Grammar: "A <- !B 'xyz'\nB <- 'abc' 'def'",
-		Input:   "abc",
-		Pos:     0, // latest error is just before 'xyz', not after 'abc'
-		Fail: &peg.Fail{
-			Name: "A",
-			Kids: []*peg.Fail{
-				{Want: `"xyz"`},
+		grammar: "A <- !B 'xyz'\nB <- 'abc' 'def'",
+		cases: []genTestCase{
+			{
+				name:  "ignore silent fails",
+				input: "abc",
+				pos:   0, // latest error is just before 'xyz', not after 'abc'
+				fail: &peg.Fail{
+					Name: "A",
+					Kids: []*peg.Fail{
+						{Want: `"xyz"`},
+					},
+				},
 			},
 		},
 	},
@@ -1582,24 +1760,28 @@ var testCases = []test{
 		// Note that this is different from the behavior
 		// of some other PEG parsers, which don't emit errors
 		// if the cached value failed in a silent context.
-		Name:    "no cache silent fails",
-		Grammar: "A <- &B 'f' / B\nB <- 'a' 'b' 'c' 'd' 'e'",
-		Input:   "abce",
-		// The error is the missing 'd' between 'abc' and 'e'.
-		// Some other PEG parsers would report the error at 0,
-		// because the first time 'd' fails, it's silent, that's cached
-		// and the subsequent fail uses the cached,
-		// un-reported error.
-		Pos: len("abc"),
-		Fail: &peg.Fail{
-			Name: "A",
-			Kids: []*peg.Fail{
-				{
-					Name: "B",
+		grammar: "A <- &B 'f' / B\nB <- 'a' 'b' 'c' 'd' 'e'",
+		cases: []genTestCase{
+			{
+				name:  "no cache silent fails",
+				input: "abce",
+				// The error is the missing 'd' between 'abc' and 'e'.
+				// Some other PEG parsers would report the error at 0,
+				// because the first time 'd' fails, it's silent, that's cached
+				// and the subsequent fail uses the cached,
+				// un-reported error.
+				pos: len("abc"),
+				fail: &peg.Fail{
+					Name: "A",
 					Kids: []*peg.Fail{
 						{
-							Pos:  len("abc"),
-							Want: `"d"`,
+							Name: "B",
+							Kids: []*peg.Fail{
+								{
+									Pos:  len("abc"),
+									Want: `"d"`,
+								},
+							},
 						},
 					},
 				},
@@ -1607,90 +1789,102 @@ var testCases = []test{
 		},
 	},
 	{
-		Name:    "named rule fail",
-		Grammar: "A <- 'abc' B 'def'\nB 'name' <- C\nC <- D\nD <- '123'",
-		Input:   "abc124",
-		Pos:     len("abc"),
-		Fail: &peg.Fail{
-			Name: "A",
-			Kids: []*peg.Fail{
-				{
-					Name: "B",
-					Pos:  len("abc"),
-					Want: "name",
+		grammar: "A <- 'abc' B 'def'\nB 'name' <- C\nC <- D\nD <- '123'",
+		cases: []genTestCase{
+			{
+				name:  "named rule fail",
+				input: "abc124",
+				pos:   len("abc"),
+				fail: &peg.Fail{
+					Name: "A",
+					Kids: []*peg.Fail{
+						{
+							Name: "B",
+							Pos:  len("abc"),
+							Want: "name",
+						},
+					},
 				},
 			},
 		},
 	},
 	{
-		Name:    "ignore errors under successful named rules",
-		Grammar: "A <- 'abc' B 'def'\nB 'name' <- '1' '2' '3' / .",
-		// B fails after 12, backtracks and succeeds after the 1.
-		// We should not report the error after abc12, but after abc1.
-		Input: "abc12x",
-		Pos:   len("abc1"),
-		Fail: &peg.Fail{
-			Name: "A",
-			Kids: []*peg.Fail{
-				{
-					Pos:  len("abc1"),
-					Want: `"def"`,
+		grammar: "A <- 'abc' B 'def'\nB 'name' <- '1' '2' '3' / .",
+		cases: []genTestCase{
+			{
+				name: "ignore errors under successful named rules",
+				// B fails after 12, backtracks and succeeds after the 1.
+				// We should not report the error after abc12, but after abc1.
+				input: "abc12x",
+				pos:   len("abc1"),
+				fail: &peg.Fail{
+					Name: "A",
+					Kids: []*peg.Fail{
+						{
+							Pos:  len("abc1"),
+							Want: `"def"`,
+						},
+					},
 				},
 			},
 		},
 	},
 	{
-		Name: "unary template",
-		Grammar: `
+		grammar: `
 			A <- List<B> List<C>
 			B <- "b"
 			C <- "c"
 			List<x> <- x*`,
-		Input: "bbbccc",
-		Pos:   len("bbbccc"),
-		Node: &peg.Node{
-			Name: "A",
-			Text: "bbbccc",
-			Kids: []*peg.Node{
-				{
-					Name: "List<B>",
-					Text: "bbb",
+		cases: []genTestCase{
+			{
+				name:  "unary template",
+				input: "bbbccc",
+				pos:   len("bbbccc"),
+				node: &peg.Node{
+					Name: "A",
+					Text: "bbbccc",
 					Kids: []*peg.Node{
 						{
-							Name: "B",
-							Text: "b",
-							Kids: []*peg.Node{{Text: "b"}},
+							Name: "List<B>",
+							Text: "bbb",
+							Kids: []*peg.Node{
+								{
+									Name: "B",
+									Text: "b",
+									Kids: []*peg.Node{{Text: "b"}},
+								},
+								{
+									Name: "B",
+									Text: "b",
+									Kids: []*peg.Node{{Text: "b"}},
+								},
+								{
+									Name: "B",
+									Text: "b",
+									Kids: []*peg.Node{{Text: "b"}},
+								},
+							},
 						},
 						{
-							Name: "B",
-							Text: "b",
-							Kids: []*peg.Node{{Text: "b"}},
-						},
-						{
-							Name: "B",
-							Text: "b",
-							Kids: []*peg.Node{{Text: "b"}},
-						},
-					},
-				},
-				{
-					Name: "List<C>",
-					Text: "ccc",
-					Kids: []*peg.Node{
-						{
-							Name: "C",
-							Text: "c",
-							Kids: []*peg.Node{{Text: "c"}},
-						},
-						{
-							Name: "C",
-							Text: "c",
-							Kids: []*peg.Node{{Text: "c"}},
-						},
-						{
-							Name: "C",
-							Text: "c",
-							Kids: []*peg.Node{{Text: "c"}},
+							Name: "List<C>",
+							Text: "ccc",
+							Kids: []*peg.Node{
+								{
+									Name: "C",
+									Text: "c",
+									Kids: []*peg.Node{{Text: "c"}},
+								},
+								{
+									Name: "C",
+									Text: "c",
+									Kids: []*peg.Node{{Text: "c"}},
+								},
+								{
+									Name: "C",
+									Text: "c",
+									Kids: []*peg.Node{{Text: "c"}},
+								},
+							},
 						},
 					},
 				},
@@ -1698,37 +1892,41 @@ var testCases = []test{
 		},
 	},
 	{
-		Name: "3-ary template",
-		Grammar: `
+		grammar: `
 			A <- Three<X, Y, Z>
 			X <- "x"
 			Y <- "y"
 			Z <- "z"
 			Three<x, y, z> <- x y z`,
-		Input: "xyz",
-		Pos:   len("xyz"),
-		Node: &peg.Node{
-			Name: "A",
-			Text: "xyz",
-			Kids: []*peg.Node{
-				{
-					Name: "Three<X, Y, Z>",
+		cases: []genTestCase{
+			{
+				name:  "3-ary template",
+				input: "xyz",
+				pos:   len("xyz"),
+				node: &peg.Node{
+					Name: "A",
 					Text: "xyz",
 					Kids: []*peg.Node{
 						{
-							Name: "X",
-							Text: "x",
-							Kids: []*peg.Node{{Text: "x"}},
-						},
-						{
-							Name: "Y",
-							Text: "y",
-							Kids: []*peg.Node{{Text: "y"}},
-						},
-						{
-							Name: "Z",
-							Text: "z",
-							Kids: []*peg.Node{{Text: "z"}},
+							Name: "Three<X, Y, Z>",
+							Text: "xyz",
+							Kids: []*peg.Node{
+								{
+									Name: "X",
+									Text: "x",
+									Kids: []*peg.Node{{Text: "x"}},
+								},
+								{
+									Name: "Y",
+									Text: "y",
+									Kids: []*peg.Node{{Text: "y"}},
+								},
+								{
+									Name: "Z",
+									Text: "z",
+									Kids: []*peg.Node{{Text: "z"}},
+								},
+							},
 						},
 					},
 				},
@@ -1738,84 +1936,57 @@ var testCases = []test{
 }
 
 func TestGen(t *testing.T) {
-	t.Parallel()
-	for _, test := range testCases {
-		test := test // for goroutine closure
-		t.Run(test.Name, func(t *testing.T) {
+	for _, test := range genTests {
+		t.Run("", func(t *testing.T) {
 			t.Parallel()
-			binary := binaries[test.Grammar]
-			var result struct {
-				Pos  int
-				Perr int
-				Node *peg.Node
-				Fail *peg.Fail
-			}
-			parse(binary, test.Input, &result)
-			pos := result.Pos
-			if result.Fail != nil {
-				pos = result.Perr
-			}
-			t.Logf("result: %+v\n", result)
-			if pos != test.Pos {
-				t.Errorf("parse(%q)=%d, want %d", test.Grammar, pos, test.Pos)
-			}
-			var got interface{}
-			if result.Node != nil {
-				got = result.Node
-			} else {
-				got = result.Fail
-			}
-			var want interface{}
-			if test.Node != nil {
-				want = test.Node
-			} else {
-				want = test.Fail
-			}
-			if !reflect.DeepEqual(want, got) {
-				t.Errorf("parse(%q)=\n%s\nwant\n%s",
-					test.Grammar, pretty.String(got), pretty.String(want))
+			source := generateTest(prelude, test.grammar)
+			binary := build(source)
+			defer rm(binary)
+			go rm(source)
+
+			for _, c := range test.cases {
+				test, c := test, c
+				t.Run(c.name, func(t *testing.T) {
+					t.Logf("%q\n", test.grammar)
+					var result struct {
+						Pos  int
+						Perr int
+						Node *peg.Node
+						Fail *peg.Fail
+					}
+					parseGob(binary, c.input, &result)
+					pos := result.Pos
+					if result.Fail != nil {
+						pos = result.Perr
+					}
+					t.Logf("result: %+v\n", result)
+					if pos != c.pos {
+						t.Errorf("parse(%q)=%d, want %d", c.input, pos, c.pos)
+					}
+					var got interface{}
+					if result.Node != nil {
+						got = result.Node
+					} else {
+						got = result.Fail
+					}
+					var want interface{}
+					if c.node != nil {
+						want = c.node
+					} else {
+						want = c.fail
+					}
+					if !reflect.DeepEqual(want, got) {
+						t.Errorf("parse(%q)=\n%s\nwant\n%s",
+							c.input, pretty.String(got), pretty.String(want))
+					}
+				})
 			}
 		})
 	}
 }
 
-func TestMain(m *testing.M) {
-	binaries = buildAll(testCases)
-	r := m.Run()
-	rmAll(binaries)
-	os.Exit(r)
-}
-
-// buildAll compiles the parser binaries for every grammar in tests
-// and returns a map from the Peggy grammar string to the binary path.
-func buildAll(tests []test) map[string]string {
-	grammars := make(map[string]bool)
-	for _, t := range tests {
-		if g := t.Grammar; g != "" {
-			grammars[g] = true
-		}
-	}
-	var wg sync.WaitGroup
-	wg.Add(len(grammars))
-	var mu sync.Mutex
-	binaries := make(map[string]string, len(grammars))
-	for grammar := range grammars {
-		go func(grammar string) {
-			defer wg.Done()
-			source := genTest(prelude, grammar)
-			binary := build(source)
-			go rm(source)
-			mu.Lock()
-			defer mu.Unlock()
-			binaries[grammar] = binary
-		}(grammar)
-	}
-	wg.Wait()
-	return binaries
-}
-
-// genTest generates Go source code for a Peggy
-func genTest(prelude string, input string) string {
+// generateTest generates Go source code for a Peggy
+func generateTest(prelude string, input string) string {
 	f, err := ioutil.TempFile(os.TempDir(), "peggy_test")
 	if err != nil {
 		panic(err.Error())
@@ -1860,22 +2031,16 @@ func build(source string) string {
 	return "./" + filepath.Base(strings.TrimSuffix(source, ".go"))
 }
 
-func rmAll(binaries map[string]string) {
-	for _, binary := range binaries {
-		rm(binary)
-	}
-}
-
 func rm(file string) {
 	if err := os.Remove(file); err != nil {
 		fmt.Fprintf(os.Stderr, "failed to remove %s: %s", file, err)
 	}
 }
 
-// parse parses an input using the given binary
+// parseGob parses an input using the given binary
 // and returns the position of either the parse or error
 // along with whether the parse succeeded.
-func parse(binary, input string, result interface{}) {
+func parseGob(binary, input string, result interface{}) {
 	cmd := exec.Command(binary)
 	cmd.Stderr = os.Stderr
 	stdin, err := cmd.StdinPipe()

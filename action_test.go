@@ -222,7 +222,7 @@ func TestActionGen(t *testing.T) {
 		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			source := genTest(actionPrelude, test.grammar)
+			source := generateTest(actionPrelude, test.grammar)
 			binary := build(source)
 			defer rm(binary)
 			go rm(source)

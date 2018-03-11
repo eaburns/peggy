@@ -52,10 +52,19 @@ func prettyWrite(w io.Writer, tab string, n nodeOrFail) error {
 	if _, err := io.WriteString(w, tab); err != nil {
 		return err
 	}
-	_, fail := n.(*Fail)
-	if n.numKids() == 0 && (n.name() == "" || fail && n.text() != "") {
+	if n.numKids() == 0 {
+		if n.name() != "" {
+			if _, err := io.WriteString(w, n.name()+"("); err != nil {
+				return err
+			}
+		}
 		if _, err := io.WriteString(w, `"`+n.text()+`"`); err != nil {
 			return err
+		}
+		if n.name() != "" {
+			if _, err := io.WriteString(w, ")"); err != nil {
+				return err
+			}
 		}
 		return nil
 	}

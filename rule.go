@@ -290,10 +290,14 @@ func (e *Sequence) substitute(sub map[string]string) Expr {
 // The value is the slice of all sub-expression values.
 func (e *Sequence) Type() string {
 	t := e.Exprs[0].Type()
-	if t == "string" {
-		return t
+	switch t {
+	case "":
+		return ""
+	case "string":
+		return "string"
+	default:
+		return "[]" + t
 	}
-	return "[]" + e.Exprs[0].Type()
 }
 
 func (e *Sequence) epsilon() bool {

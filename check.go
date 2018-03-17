@@ -276,7 +276,7 @@ func (e *LabelExpr) check(rules map[string]*Rule, labels map[string]*LabelExpr, 
 }
 
 func (e *PredExpr) check(rules map[string]*Rule, labels map[string]*LabelExpr, valueUsed bool, errs *Errors) {
-	e.Expr.check(rules, labels, valueUsed, errs)
+	e.Expr.check(rules, labels, false, errs)
 }
 
 func (e *RepExpr) check(rules map[string]*Rule, labels map[string]*LabelExpr, valueUsed bool, errs *Errors) {

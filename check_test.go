@@ -197,6 +197,16 @@ G <- [fgh]*`,
 			err:  "",
 		},
 		{
+			name: "&-pred subexpression is unused",
+			in:   `A <- "a" !( "b" int:{ return 5 } )`,
+			err:  "",
+		},
+		{
+			name: "!-pred subexpression is unused",
+			in:   `A <- "a" !( "b" int:{ return 5 } )`,
+			err:  "",
+		},
+		{
 			name: "multiple type errors",
 			in: `A <- B ( "c" int: { return 0 } )
 				B <- "b" / ( "c" int: { return 0 } )`,

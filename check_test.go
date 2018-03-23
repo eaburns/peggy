@@ -12,12 +12,41 @@ import (
 	"testing"
 )
 
+type checkTest struct {
+	name        string
+	in          string
+	err         string
+	skipActions bool
+}
+
+func (test checkTest) Run(t *testing.T) {
+	in := strings.NewReader(test.in)
+	g, err := Parse(in, "test.file")
+	if err != nil {
+		t.Errorf("Parse(%q, _)=_, %v, want _,nil", test.in, err)
+		return
+	}
+	err = Check(g)
+	if test.err == "" {
+		if err != nil {
+			t.Errorf("Check(%q)=%v, want nil", test.in, err)
+		}
+		return
+	}
+	re := regexp.MustCompile(test.err)
+	if err == nil || !re.MatchString(err.Error()) {
+		var e string
+		if err != nil {
+			e = err.Error()
+		}
+		t.Errorf("Check(%q)=%v, but expected to match %q",
+			test.in, e, test.err)
+		return
+	}
+}
+
 func TestCheck(t *testing.T) {
-	tests := []struct {
-		name string
-		in   string
-		err  string
-	}{
+	tests := []checkTest{
 		{
 			name: "empty OK",
 			in:   "",
@@ -218,29 +247,27 @@ G <- [fgh]*`,
 		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			in := strings.NewReader(test.in)
-			g, err := Parse(in, "test.file")
-			if err != nil {
-				t.Errorf("Parse(%q, _)=_, %v, want _,nil", test.in, err)
-				return
-			}
-			err = Check(g)
-			if test.err == "" {
-				if err != nil {
-					t.Errorf("Check(%q)=%v, want nil", test.in, err)
-				}
-				return
-			}
-			re := regexp.MustCompile(test.err)
-			if err == nil || !re.MatchString(err.Error()) {
-				var e string
-				if err != nil {
-					e = err.Error()
-				}
-				t.Errorf("Check(%q)=%v, but expected to match %q",
-					test.in, e, test.err)
-				return
-			}
+			test.Run(t)
 		})
+	}
+}
+
+func TestGenActionsFalse(t *testing.T) {
+	// This set of tests cannot be run in parallel.
+	*genActions = false
+	defer func() { *genActions = true }()
+
+	tests := []checkTest{
+		{
+			name: "choice type mismatch: no error",
+			in:   `A <- "a" / "b" int:{ return 5 }`,
+		},
+		{
+			name: "sequence type mismatch: no error",
+			in:   `A <- "a" ( "b" int:{ return 5 } )`,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, test.Run)
 	}
 }

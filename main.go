@@ -16,8 +16,9 @@ import (
 //go:generate goyacc -o grammar.go -p "peggy" grammar.y
 
 var (
-	out    = flag.String("o", "", "output file path")
-	prefix = flag.String("p", "_", "identifier prefix")
+	out        = flag.String("o", "", "output file path")
+	prefix     = flag.String("p", "_", "identifier prefix")
+	genActions = flag.Bool("a", true, "generate action parsing")
 )
 
 func main() {

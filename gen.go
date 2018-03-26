@@ -365,6 +365,9 @@ var declsTemplate = `
 	func {{$pre}}leaf(parser *{{$pre}}Parser, start, end int) *peg.Node {
 		return &peg.Node{Text: parser.text[start:end]}
 	}
+
+	// A no-op function to mark a variable as used.
+	func use(interface{}) {}
 `
 
 // templates contains a mapping from Expr types to their templates.
@@ -433,7 +436,7 @@ var ruleTemplate = `
 var stringLabels = `
 	{{- if $.Rule.Labels -}}
 		var labels [{{len $.Rule.Labels}}]string
-		labels = labels
+		use(labels)
 	{{- end -}}
 `
 
@@ -530,7 +533,6 @@ var ruleAction = `
 		{{if $.Rule.Labels -}}
 			{{range $l := $.Rule.Labels -}}
 				var label{{$l.N}} {{$l.Type}}
-				label{{$l.N}} = label{{$l.N}}
 			{{end}}
 		{{- end -}}
 		dp := parser.deltaPos[start][{{$pre}}{{$id}}]

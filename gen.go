@@ -120,9 +120,10 @@ func writeRule(w io.Writer, c Config, r *Rule) error {
 		},
 	}
 	data := map[string]interface{}{
-		"Config":     c,
-		"Rule":       r,
-		"GenActions": *genActions,
+		"Config":       c,
+		"Rule":         r,
+		"GenActions":   *genActions,
+		"GenParseTree": *genParseTree,
 	}
 	tmp, err := template.New("rule").Parse(ruleTemplate)
 	if err != nil {
@@ -420,11 +421,13 @@ var templates = map[reflect.Type]string{
 
 var ruleTemplate = `
 	{{template "ruleAccepts" $}}
-	{{template "ruleNode" $}}
+	{{if $.GenParseTree -}}
+		{{template "ruleNode" $}}
+	{{end -}}
 	{{template "ruleFail" $}}
-	{{if $.GenActions}}
+	{{if $.GenActions -}}
 		{{template "ruleAction" $}}
-	{{end}}
+	{{end -}}
 `
 
 var stringLabels = `

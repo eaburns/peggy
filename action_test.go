@@ -102,6 +102,14 @@ var actionTests = []actionTest{
 		},
 	},
 	{
+		name:    "choice branch fails after submatch",
+		grammar: `A <- "xyz"? ( "a" "b" "c" / "a" "c" "b" )`,
+		cases: []actionTestCase{
+			{"acb", "acb"},
+			{"xyzacb", "xyzacb"},
+		},
+	},
+	{
 		name:    "multi-type sequence",
 		grammar: `A <- ("a" "b" "c") "xyz"`,
 		cases: []actionTestCase{

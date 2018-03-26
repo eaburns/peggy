@@ -562,10 +562,13 @@ var choiceTemplate = `// {{$.Expr.String}}
 {
 	{{- $ok := id "ok" -}}
 	{{- $nkids := id "nkids" -}}
+	{{- $node0 := id "node" -}}
 	{{- $pos0 := id "pos" -}}
 	{{$pos0}} := pos
 	{{if $.NodePass -}}
 		{{$nkids}} := len(node.Kids)
+	{{else if (and $.Node $.ActionPass) -}}
+		var {{$node0}} {{$.Expr.Type}}
 	{{end -}}
 	{{- range $i, $subExpr := $.Expr.Exprs -}}
 		{{- $fail := id "fail" -}}
@@ -576,6 +579,8 @@ var choiceTemplate = `// {{$.Expr.String}}
 			{{$fail}}:
 				{{if $.NodePass -}}
 					node.Kids = node.Kids[:{{$nkids}}]
+				{{else if (and $.Node $.ActionPass) -}}
+					{{$.Node}} = {{$node0}}
 				{{end -}}
 				pos = {{$pos0}}
 			{{if last $i $.Expr.Exprs -}}
@@ -627,7 +632,7 @@ var sequenceTemplate = `// {{$.Expr.String}}
 	{{range $i, $subExpr := $.Expr.Exprs -}}
 		{{if (and $.ActionPass $.Node (eq $.Expr.Type "string")) -}}
 			{{gen $ $subExpr $node $.Fail -}}
-			{{$.Node}} += {{$node}}
+			{{$.Node}}, {{$node}} = {{$.Node}}+{{$node}}, ""
 		{{else if (and $.ActionPass $.Node) -}}
 			{{gen $ $subExpr (printf "%s[%d]" $.Node $i) $.Fail -}}
 		{{else -}}

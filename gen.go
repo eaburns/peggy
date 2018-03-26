@@ -726,7 +726,7 @@ var predExprTemplate = `// {{$.Expr.String}}
 	{{else if $.FailPass -}}
 		failure.Kids = failure.Kids[:{{$nkids}}]
 	{{else if (and $.ActionPass $.Node) -}}
-		node = ""
+		{{$.Node}} = ""
 	{{end -}}
 }
 `

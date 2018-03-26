@@ -128,37 +128,39 @@ var actionTests = []actionTest{
 	{
 		name: "true predicate",
 		grammar: `
-			A <- &Abc "abc"
+			A <- "123"? &Abc "abc"
 			Abc <- "a" "b" "c"`,
 		cases: []actionTestCase{
 			{"abc", "abc"},
+			{"123abc", "123abc"},
 		},
 	},
 	{
 		name: "false predicate",
 		grammar: `
-			A <- !Abc "xyz"
+			A <- "123"? !Abc "xyz"
 			Abc <- "a" "b" "c"`,
 		cases: []actionTestCase{
 			{"xyz", "xyz"},
+			{"123xyz", "123xyz"},
 		},
 	},
 	{
 		name: "true pred code",
 		grammar: `
-			A <- &{ true } "abc"
-			Abc <- "a" "b" "c"`,
+			A <- "abc"? &{ true } "xyz"`,
 		cases: []actionTestCase{
-			{"abc", "abc"},
+			{"xyz", "xyz"},
+			{"abcxyz", "abcxyz"},
 		},
 	},
 	{
 		name: "false pred code",
 		grammar: `
-			A <- !{ false } "xyz"
-			Abc <- "a" "b" "c"`,
+			A <- "abc"? !{ false } "xyz"`,
 		cases: []actionTestCase{
 			{"xyz", "xyz"},
+			{"abcxyz", "abcxyz"},
 		},
 	},
 	{

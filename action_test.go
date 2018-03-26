@@ -190,6 +190,24 @@ var actionTests = []actionTest{
 			}},
 		},
 	},
+	{
+		name: "start and end",
+		grammar: `
+			A <- smiley? as v:bs cs "[2]int":{ return v }
+			smiley <- '☺'
+			as <- 'a'*
+			bs <- 'b'* "[2]int":{ return [2]int{start, end} }
+			cs <- 'c'*
+		`,
+		cases: []actionTestCase{
+			{"", []interface{}{0.0, 0.0}},
+			{"aaaccc", []interface{}{3.0, 3.0}},
+			{"aaabccc", []interface{}{3.0, 4.0}},
+			{"bbb", []interface{}{0.0, 3.0}},
+			{"aaabbbccc", []interface{}{3.0, 6.0}},
+			{"☺aaabbbccc", []interface{}{float64(len("☺") + 3), float64(len("☺") + 6)}},
+		},
+	},
 
 	// A simple calculator.
 	// BUG: The test grammar has reverse the normal associativity — oops.

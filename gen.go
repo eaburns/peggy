@@ -583,21 +583,30 @@ var choiceTemplate = `// {{$.Expr.String}}
 `
 
 var actionTemplate = `// action
-	{{gen $ $.Expr.Expr "" $.Fail -}}
 	{{if $.ActionPass -}}
-	{{/* TODO: don't put the func in the scope of the rule. */ -}}
-	{{if $.Node}}{{$.Node}} = {{end}} func(
-		{{- if $.Expr.Labels -}}
-			{{range $lexpr := $.Expr.Labels -}}
-				{{$lexpr.Label}} {{$lexpr.Type}},
-			{{- end -}}
-		{{- end -}}) {{$.Expr.Type}} { {{$.Expr.Code}} }(
-		{{- if $.Expr.Labels -}}
-			{{range $lexpr := $.Expr.Labels -}}
-				label{{$lexpr.N}},
-			{{- end -}}
-		{{- end -}}
-	)
+		{
+			{{$start := id "start" -}}
+			{{$start}} := pos
+			{{gen $ $.Expr.Expr "" $.Fail -}}
+			{{/* TODO: don't put the func in the scope of the rule. */ -}}
+			{{if $.Node}}{{$.Node}} = {{end}} func(
+				start, end int,
+				{{- if $.Expr.Labels -}}
+					{{range $lexpr := $.Expr.Labels -}}
+						{{$lexpr.Label}} {{$lexpr.Type}},
+					{{- end -}}
+				{{- end -}})
+				{{- $.Expr.Type}} { {{$.Expr.Code}} }(
+					{{$start}}, pos,
+					{{- if $.Expr.Labels -}}
+						{{range $lexpr := $.Expr.Labels -}}
+							label{{$lexpr.N}},
+						{{- end -}}
+					{{- end -}}
+			)
+		}
+	{{else -}}
+		{{gen $ $.Expr.Expr "" $.Fail -}}
 	{{end -}}
 `
 

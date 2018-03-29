@@ -10,6 +10,7 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 )
 
@@ -20,6 +21,7 @@ var (
 	prefix       = flag.String("p", "_", "identifier prefix")
 	genActions   = flag.Bool("a", true, "generate action parsing")
 	genParseTree = flag.Bool("t", true, "generate parse tree parsing")
+	prettyPrint  = flag.Bool("pretty", false, "don't check or generate, write the grammar without labels or actions")
 )
 
 func main() {
@@ -43,12 +45,8 @@ func main() {
 		fmt.Println(err)
 		os.Exit(1)
 	}
-	if err := Check(g); err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
 
-	w := bufio.NewWriter(os.Stdout)
+	var w io.Writer = os.Stdout
 	if *out != "" {
 		f, err := os.Create(*out)
 		if err != nil {
@@ -60,15 +58,25 @@ func main() {
 				fmt.Println(err)
 			}
 		}()
-		w = bufio.NewWriter(f)
+		w = f
+	}
+	if *prettyPrint {
+		for i := range g.Rules {
+			r := &g.Rules[i]
+			if _, err := io.WriteString(w, r.String()+"\n"); err != nil {
+				fmt.Println(err)
+				os.Exit(1)
+			}
+		}
+		os.Exit(0)
+	}
+	if err := Check(g); err != nil {
+		fmt.Println(err)
+		os.Exit(1)
 	}
 
 	cfg := Config{Prefix: *prefix}
 	if err := cfg.Generate(w, file, g); err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
-	if err := w.Flush(); err != nil {
 		fmt.Println(err)
 		os.Exit(1)
 	}

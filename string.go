@@ -83,6 +83,9 @@ func (e *Action) String() string {
 	if strings.IndexFunc(t, func(r rune) bool { return !isIdentRune(r) }) >= 0 {
 		t = `"` + t + `"`
 	}
+	if *prettyPrint {
+		return e.Expr.String()
+	}
 	return e.Expr.String() + " " + t + ":{…}"
 }
 
@@ -95,6 +98,9 @@ func (e *Sequence) String() string {
 }
 
 func (e *LabelExpr) String() string {
+	if *prettyPrint {
+		return e.Expr.String()
+	}
 	return e.Label.String() + ":" + e.Expr.String()
 }
 
@@ -131,7 +137,22 @@ func (e *PredCode) String() string {
 }
 
 func (e *Literal) String() string {
-	return fmt.Sprintf(`%q`, e.Text)
+	s := strconv.QuoteToGraphic(e.Text.String())
+	// Replace some combining characters with their escaped version.
+	for _, sub := range []string{
+		"\u0301",
+		"\u0304",
+		"\u030C",
+		"\u0306",
+		"\u0309",
+		"\u0302",
+		"\u0300",
+		"\u0303",
+	} {
+		q := strconv.QuoteToASCII(sub)
+		s = strings.Replace(s, sub, q[1:len(q)-1], -1)
+	}
+	return s
 }
 
 func (e *CharClass) String() string {
@@ -158,7 +179,7 @@ func charClassEsc(r rune) string {
 	case ']':
 		return `\]`
 	}
-	s := strconv.QuoteRune(r)
+	s := strconv.QuoteRuneToGraphic(r)
 	return strings.TrimPrefix(strings.TrimSuffix(s, "'"), "'")
 }
 

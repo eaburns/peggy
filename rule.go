@@ -130,7 +130,7 @@ type Expr interface {
 
 	// Walk calls a function for each expression in the tree.
 	// Walk stops early if the function returns false.
-	Walk(func(Expr) bool)
+	Walk(func(Expr) bool) bool
 
 	// substitute returns a clone of the expression
 	// with all occurrences of identifiers that are keys of sub
@@ -168,15 +168,16 @@ type Choice struct{ Exprs []Expr }
 func (e *Choice) Begin() Loc { return e.Exprs[0].Begin() }
 func (e *Choice) End() Loc   { return e.Exprs[len(e.Exprs)-1].End() }
 
-func (e *Choice) Walk(f func(Expr) bool) {
+func (e *Choice) Walk(f func(Expr) bool) bool {
 	if !f(e) {
-		return
+		return false
 	}
 	for _, kid := range e.Exprs {
-		if !f(kid) {
-			return
+		if !kid.Walk(f) {
+			return false
 		}
 	}
+	return true
 }
 
 func (e *Choice) substitute(sub map[string]string) Expr {
@@ -238,10 +239,8 @@ func (e *Action) Type() string  { return e.ReturnType.String() }
 func (e *Action) epsilon() bool { return e.Expr.epsilon() }
 func (e *Action) CanFail() bool { return e.Expr.CanFail() }
 
-func (e *Action) Walk(f func(Expr) bool) {
-	if f(e) {
-		f(e.Expr)
-	}
+func (e *Action) Walk(f func(Expr) bool) bool {
+	return f(e) && e.Expr.Walk(f)
 }
 
 func (e *Action) substitute(sub map[string]string) Expr {
@@ -257,15 +256,16 @@ type Sequence struct{ Exprs []Expr }
 func (e *Sequence) Begin() Loc { return e.Exprs[0].Begin() }
 func (e *Sequence) End() Loc   { return e.Exprs[len(e.Exprs)-1].End() }
 
-func (e *Sequence) Walk(f func(Expr) bool) {
+func (e *Sequence) Walk(f func(Expr) bool) bool {
 	if !f(e) {
-		return
+		return false
 	}
 	for _, kid := range e.Exprs {
-		if !f(kid) {
-			return
+		if !kid.Walk(f) {
+			return false
 		}
 	}
+	return true
 }
 
 func (e *Sequence) substitute(sub map[string]string) Expr {
@@ -336,10 +336,8 @@ func (e *LabelExpr) Type() string  { return e.Expr.Type() }
 func (e *LabelExpr) epsilon() bool { return e.Expr.epsilon() }
 func (e *LabelExpr) CanFail() bool { return e.Expr.CanFail() }
 
-func (e *LabelExpr) Walk(f func(Expr) bool) {
-	if f(e) {
-		f(e.Expr)
-	}
+func (e *LabelExpr) Walk(f func(Expr) bool) bool {
+	return f(e) && e.Expr.Walk(f)
 }
 
 func (e *LabelExpr) substitute(sub map[string]string) Expr {
@@ -372,10 +370,8 @@ func (e *PredExpr) Type() string { return "string" }
 func (e *PredExpr) epsilon() bool { return true }
 func (e *PredExpr) CanFail() bool { return e.Expr.CanFail() }
 
-func (e *PredExpr) Walk(f func(Expr) bool) {
-	if f(e) {
-		f(e.Expr)
-	}
+func (e *PredExpr) Walk(f func(Expr) bool) bool {
+	return f(e) && e.Expr.Walk(f)
 }
 
 func (e *PredExpr) substitute(sub map[string]string) Expr {
@@ -419,10 +415,8 @@ func (e *RepExpr) Type() string {
 func (e *RepExpr) epsilon() bool { return e.Op == '*' }
 func (e *RepExpr) CanFail() bool { return e.Op == '+' && e.Expr.CanFail() }
 
-func (e *RepExpr) Walk(f func(Expr) bool) {
-	if f(e) {
-		f(e.Expr)
-	}
+func (e *RepExpr) Walk(f func(Expr) bool) bool {
+	return f(e) && e.Expr.Walk(f)
 }
 
 func (e *RepExpr) substitute(sub map[string]string) Expr {
@@ -463,10 +457,8 @@ func (e *OptExpr) Type() string {
 func (e *OptExpr) epsilon() bool { return true }
 func (e *OptExpr) CanFail() bool { return false }
 
-func (e *OptExpr) Walk(f func(Expr) bool) {
-	if f(e) {
-		f(e.Expr)
-	}
+func (e *OptExpr) Walk(f func(Expr) bool) bool {
+	return f(e) && e.Expr.Walk(f)
 }
 
 func (e *OptExpr) substitute(sub map[string]string) Expr {
@@ -485,10 +477,10 @@ type Ident struct {
 	rule *Rule
 }
 
-func (e *Ident) Begin() Loc             { return e.Name.Begin() }
-func (e *Ident) End() Loc               { return e.Name.End() }
-func (e *Ident) CanFail() bool          { return true }
-func (e *Ident) Walk(f func(Expr) bool) { f(e) }
+func (e *Ident) Begin() Loc                  { return e.Name.Begin() }
+func (e *Ident) End() Loc                    { return e.Name.End() }
+func (e *Ident) CanFail() bool               { return true }
+func (e *Ident) Walk(f func(Expr) bool) bool { return f(e) }
 
 // Type returns the type of the identifier expression,
 // which is the type of its corresponding rule.
@@ -550,10 +542,8 @@ func (e *SubExpr) Type() string  { return e.Expr.Type() }
 func (e *SubExpr) epsilon() bool { return e.Expr.epsilon() }
 func (e *SubExpr) CanFail() bool { return e.Expr.CanFail() }
 
-func (e *SubExpr) Walk(f func(Expr) bool) {
-	if f(e) {
-		f(e.Expr)
-	}
+func (e *SubExpr) Walk(f func(Expr) bool) bool {
+	return f(e) && e.Expr.Walk(f)
 }
 
 func (e *SubExpr) substitute(sub map[string]string) Expr {
@@ -587,9 +577,9 @@ func (e *PredCode) End() Loc   { return e.Code.End() }
 // which is a string; the value is always the empty string.
 func (e *PredCode) Type() string { return "string" }
 
-func (e *PredCode) epsilon() bool          { return true }
-func (e *PredCode) CanFail() bool          { return true }
-func (e *PredCode) Walk(f func(Expr) bool) { f(e) }
+func (e *PredCode) epsilon() bool               { return true }
+func (e *PredCode) CanFail() bool               { return true }
+func (e *PredCode) Walk(f func(Expr) bool) bool { return f(e) }
 
 func (e *PredCode) substitute(sub map[string]string) Expr {
 	substitute := *e
@@ -605,12 +595,12 @@ type Literal struct {
 	Text Text
 }
 
-func (e *Literal) Begin() Loc             { return e.Text.Begin() }
-func (e *Literal) End() Loc               { return e.Text.End() }
-func (e *Literal) Type() string           { return "string" }
-func (e *Literal) epsilon() bool          { return false }
-func (e *Literal) CanFail() bool          { return true }
-func (e *Literal) Walk(f func(Expr) bool) { f(e) }
+func (e *Literal) Begin() Loc                  { return e.Text.Begin() }
+func (e *Literal) End() Loc                    { return e.Text.End() }
+func (e *Literal) Type() string                { return "string" }
+func (e *Literal) epsilon() bool               { return false }
+func (e *Literal) CanFail() bool               { return true }
+func (e *Literal) Walk(f func(Expr) bool) bool { return f(e) }
 
 func (e *Literal) substitute(sub map[string]string) Expr {
 	substitute := *e
@@ -632,12 +622,12 @@ type CharClass struct {
 	Open, Close Loc
 }
 
-func (e *CharClass) Begin() Loc             { return e.Open }
-func (e *CharClass) End() Loc               { return e.Close }
-func (e *CharClass) Type() string           { return "string" }
-func (e *CharClass) epsilon() bool          { return false }
-func (e *CharClass) CanFail() bool          { return true }
-func (e *CharClass) Walk(f func(Expr) bool) { f(e) }
+func (e *CharClass) Begin() Loc                  { return e.Open }
+func (e *CharClass) End() Loc                    { return e.Close }
+func (e *CharClass) Type() string                { return "string" }
+func (e *CharClass) epsilon() bool               { return false }
+func (e *CharClass) CanFail() bool               { return true }
+func (e *CharClass) Walk(f func(Expr) bool) bool { return f(e) }
 
 func (e *CharClass) substitute(sub map[string]string) Expr {
 	substitute := *e
@@ -650,12 +640,12 @@ type Any struct {
 	Loc Loc
 }
 
-func (e *Any) Begin() Loc             { return e.Loc }
-func (e *Any) End() Loc               { return Loc{Line: e.Loc.Line, Col: e.Loc.Col + 1} }
-func (e *Any) Type() string           { return "string" }
-func (e *Any) epsilon() bool          { return false }
-func (e *Any) CanFail() bool          { return true }
-func (e *Any) Walk(f func(Expr) bool) { f(e) }
+func (e *Any) Begin() Loc                  { return e.Loc }
+func (e *Any) End() Loc                    { return Loc{Line: e.Loc.Line, Col: e.Loc.Col + 1} }
+func (e *Any) Type() string                { return "string" }
+func (e *Any) epsilon() bool               { return false }
+func (e *Any) CanFail() bool               { return true }
+func (e *Any) Walk(f func(Expr) bool) bool { return f(e) }
 
 func (e *Any) substitute(sub map[string]string) Expr {
 	substitute := *e

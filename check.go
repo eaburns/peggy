@@ -6,7 +6,9 @@
 
 package main
 
-import "sort"
+import (
+	"sort"
+)
 
 // Check does semantic analysis of the rules,
 // setting bookkeeping needed to later generate the parser,
@@ -48,70 +50,76 @@ func Check(grammar *Grammar) error {
 	return nil
 }
 
-func expandTemplates(rules []Rule, errs *Errors) []*Rule {
-	tmpNames := make(map[string]bool)
-	for i := range rules {
-		r := &rules[i]
-		if len(r.Args) > 0 {
-			tmpNames[r.Name.Name.String()] = true
+func expandTemplates(ruleDefs []Rule, errs *Errors) []*Rule {
+	var expanded, todo []*Rule
+	tmplNames := make(map[string]*Rule)
+	for i := range ruleDefs {
+		r := &ruleDefs[i]
+		if len(r.Name.Args) > 0 {
+			seenParams := make(map[string]bool)
+			for _, param := range r.Name.Args {
+				n := param.String()
+				if seenParams[n] {
+					errs.add(param, "parameter %s redefined", n)
+				}
+				seenParams[n] = true
+			}
+			tmplNames[r.Name.Name.String()] = r
+		} else {
+			expanded = append(expanded, r)
+			todo = append(todo, r)
 		}
 	}
 
-	tmps := templateInvocations(rules)
-	var expanded []*Rule
-	for i := range rules {
-		r := &rules[i]
-		if len(r.Args) == 0 {
-			n := r.Name.Name.String()
-			if tmpNames[n] {
-				errs.add(r, "rule %s redefined", n)
-			} else {
-				expanded = append(expanded, r)
-			}
-			continue
-		}
-		seenParams := make(map[string]bool)
-		for _, param := range r.Name.Args {
-			n := param.String()
-			if seenParams[n] {
-				errs.add(param, "parameter %s redefined", n)
-			}
-			seenParams[n] = true
-		}
-		for _, t := range tmps[r.Name.Name.String()] {
-			c := *r
-			if len(t.Args) != len(r.Args) {
-				errs.add(t, "template %s argument count mismatch: got %d, expected %d",
-					r.Name, len(t.Args), len(r.Args))
+	seen := make(map[string]bool)
+	for i := 0; i < len(todo); i++ {
+		for _, invok := range invokedTemplates(todo[i]) {
+			if seen[invok.Name.String()] {
 				continue
 			}
-			sub := make(map[string]string, len(r.Args))
-			for i, arg := range t.Args {
-				sub[r.Args[i].String()] = arg.String()
+			seen[invok.Name.String()] = true
+			tmpl := tmplNames[invok.Name.Name.String()]
+			if tmpl == nil {
+				continue // undefined template, error reported elsewhere
 			}
-			c.Args = t.Args
-			c.Expr = r.Expr.substitute(sub)
-			expanded = append(expanded, &c)
+			exp := expand1(tmpl, invok, errs)
+			if exp == nil {
+				continue // error expanding, error reported elsewhere
+			}
+			todo = append(todo, exp)
+			expanded = append(expanded, exp)
 		}
 	}
 	return expanded
 }
 
-func templateInvocations(rules []Rule) map[string][]*Ident {
-	tmps := make(map[string][]*Ident)
-	for i := range rules {
-		r := &rules[i]
-		r.Expr.Walk(func(e Expr) bool {
-			if id, ok := e.(*Ident); ok {
-				if len(id.Args) > 0 {
-					n := id.Name.Name.String()
-					tmps[n] = append(tmps[n], id)
-				}
-			}
-			return true
-		})
+func expand1(tmpl *Rule, invok *Ident, errs *Errors) *Rule {
+	if len(invok.Args) != len(tmpl.Args) {
+		errs.add(invok, "template %s argument count mismatch: got %d, expected %d",
+			tmpl.Name, len(invok.Args), len(tmpl.Args))
+		return nil
 	}
-	return tmps
+	copy := *tmpl
+	sub := make(map[string]string, len(tmpl.Args))
+	for i, arg := range invok.Args {
+		sub[tmpl.Args[i].String()] = arg.String()
+	}
+	copy.Args = invok.Args
+	copy.Expr = tmpl.Expr.substitute(sub)
+	return &copy
+}
+
+func invokedTemplates(r *Rule) []*Ident {
+	var tmpls []*Ident
+	r.Expr.Walk(func(e Expr) bool {
+		if id, ok := e.(*Ident); ok {
+			if len(id.Args) > 0 {
+				tmpls = append(tmpls, id)
+			}
+		}
+		return true
+	})
+	return tmpls
 }
 
 type path struct {

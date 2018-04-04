@@ -1933,6 +1933,50 @@ var genTests = []genTest{
 			},
 		},
 	},
+	{
+		grammar: `
+			A <- "a" B<X>
+			B<X> <- "b" C<X>
+			C<X> <- "c" X C<X>?
+			X <- "x"`,
+		cases: []genTestCase{
+			{
+				name:  "template calls a template",
+				input: "abcxcx",
+				pos:   len("abcxcx"),
+				node: &peg.Node{
+					Name: "A",
+					Text: "abcxcx",
+					Kids: []*peg.Node{
+						{Text: "a"},
+						{
+							Name: "B<X>",
+							Text: "bcxcx",
+							Kids: []*peg.Node{
+								{Text: "b"},
+								{
+									Name: "C<X>",
+									Text: "cxcx",
+									Kids: []*peg.Node{
+										{Text: "c"},
+										{Name: "X", Text: "x", Kids: []*peg.Node{{Text: "x"}}},
+										{
+											Name: "C<X>",
+											Text: "cx",
+											Kids: []*peg.Node{
+												{Text: "c"},
+												{Name: "X", Text: "x", Kids: []*peg.Node{{Text: "x"}}},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	},
 }
 
 func TestGen(t *testing.T) {

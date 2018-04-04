@@ -113,14 +113,6 @@ G <- [fgh]*`,
 			err: "^test.file:1.6,1.7: parameter x redefined$",
 		},
 		{
-			name: "template and non-template redef",
-			in: `A<x> <- x
-				B <- A<C>
-				C <- "c"
-				A <- "a"`,
-			err: "^test.file:4.5,4.13: rule A redefined$",
-		},
-		{
 			name: "template arg count mismatch",
 			in: `A<x> <- x
 				B <- A<C, C>
@@ -180,6 +172,15 @@ G <- [fgh]*`,
 				OptExpr <- Action?
 				Action <- Choice string:{ return "" }`,
 			err: "^test.file:1.1,1.25: left-recursion: Choice, Sequence, SubExpr, PredExpr, RepExpr, OptExpr, Action, Choice$",
+		},
+		{
+			name: "templates calling templates",
+			in: `A <- B<X>
+				B<X> <- C<X>
+				C<X> <- "a" D<X> C<X>?
+				D<X> <- X
+				X <- "x"`,
+			err: "", // this should work fine.
 		},
 		{
 			name: "template left-recursion",

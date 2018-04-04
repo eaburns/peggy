@@ -517,6 +517,18 @@ func (e *Ident) substitute(sub map[string]string) Expr {
 			},
 		}
 	}
+	substitute.Args = make([]Text, len(e.Args))
+	for i, a := range e.Args {
+		if s, ok := sub[a.String()]; !ok {
+			substitute.Args[i] = e.Args[i]
+		} else {
+			substitute.Args[i] = text{
+				str:   s,
+				begin: a.Begin(),
+				end:   a.End(),
+			}
+		}
+	}
 	return &substitute
 }
 

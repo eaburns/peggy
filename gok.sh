@@ -43,7 +43,7 @@ golint ./... \
 	> $o 2>&1
 # Silly: diff the grepped golint output with empty.
 # If it's non-empty, error, otherwise succeed.
-e=$(tempfile)
+e=$(mktemp tmp.XXXXXXXXXX)
 touch $e
 diff $o $e > /dev/null || { rm $e; fail; }
 

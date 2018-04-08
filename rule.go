@@ -227,7 +227,7 @@ type Action struct {
 	Code Text
 
 	// ReturnType is the go type of the value returned by the action.
-	ReturnType Text
+	ReturnType string
 
 	// Labels are the labels that are in scope of this action.
 	Labels []*LabelExpr
@@ -235,7 +235,7 @@ type Action struct {
 
 func (e *Action) Begin() Loc    { return e.Expr.Begin() }
 func (e *Action) End() Loc      { return e.Code.End() }
-func (e *Action) Type() string  { return e.ReturnType.String() }
+func (e *Action) Type() string  { return e.ReturnType }
 func (e *Action) epsilon() bool { return e.Expr.epsilon() }
 func (e *Action) CanFail() bool { return e.Expr.CanFail() }
 

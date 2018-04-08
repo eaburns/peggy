@@ -220,21 +220,21 @@ func main() { fmt.Println("Hello, World") }
 	// Precedence.
 	{
 		Name:       "various precedences",
-		Input:      "A <- x:B*+ C?/(!D y:&E)* T:{c}/F !{p}",
-		FullString: "A <- ((((x:(((B)*)+)) ((C)?))/((((!(D)) (y:(&(E))))*) T:{c}))/((F) (!{p})))",
-		String:     "A <- x:B*+ C?/(!D y:&E)* T:{…}/F !{…}",
+		Input:      "A <- x:B*+ C?/(!D y:&E)* {return 0}/F !{p}",
+		FullString: "A <- ((((x:(((B)*)+)) ((C)?))/((((!(D)) (y:(&(E))))*) {return 0}))/((F) (!{p})))",
+		String:     "A <- x:B*+ C?/(!D y:&E)* {…}/F !{…}",
 	},
 	{
 		Name:       "action < choice",
-		Input:      "A <- B T:{act}/C T:{act}",
-		FullString: "A <- (((B) T:{act})/((C) T:{act}))",
-		String:     "A <- B T:{…}/C T:{…}",
+		Input:      "A <- B { return 0 }/C { return 0 }",
+		FullString: "A <- (((B) { return 0 })/((C) { return 0 }))",
+		String:     "A <- B {…}/C {…}",
 	},
 	{
 		Name:       "sequence < action",
-		Input:      "A <- B C T:{act}",
-		FullString: "A <- (((B) (C)) T:{act})",
-		String:     "A <- B C T:{…}",
+		Input:      "A <- B C { return 0 }",
+		FullString: "A <- (((B) (C)) { return 0 })",
+		String:     "A <- B C {…}",
 	},
 	{
 		Name:       "label < sequence",
@@ -277,26 +277,6 @@ D <- .*
 E <- Z*
 F <- "cde"*
 G <- [fgh]*`,
-	},
-
-	// Actions
-	{
-		Name:       "action with ident type",
-		Input:      `A <- "abc" T:{act}`,
-		FullString: `A <- (("abc") T:{act})`,
-		String:     `A <- "abc" T:{…}`,
-	},
-	{
-		Name:       "action with string type",
-		Input:      `A <- "abc" "interface{}":{act}`,
-		FullString: `A <- (("abc") "interface{}":{act})`,
-		String:     `A <- "abc" "interface{}":{…}`,
-	},
-	{
-		Name:       "action strip unnecessary quotes",
-		Input:      `A <- "abc" "XYZ":{act}`,
-		FullString: `A <- (("abc") XYZ:{act})`,
-		String:     `A <- "abc" XYZ:{…}`,
 	},
 
 	// Templates
@@ -693,14 +673,6 @@ D "d" <- "d"`,
 		FullString: `A <- ((!{code}) (!{CODE}))`,
 		String:     `A <- !{…} !{…}`,
 	},
-	{
-		Name: `after : type`,
-		Input: `A <- A "t":
-		{code} / B T: #comment
-		{CODE}`,
-		FullString: `A <- (((A) t:{code})/((B) T:{CODE}))`,
-		String:     `A <- A t:{…}/B T:{…}`,
-	},
 
 	// Systax errors.
 	{
@@ -826,22 +798,50 @@ A <- B`,
 		Error: "^test.file:3.11",
 	},
 	{
-		Name: `bad action`,
-		// = instead of ==.
-		Input: "\nA <- B T:{ if ( }",
-		Error: "^test.file:2.17",
+		Name:  `bad action`,
+		Input: "A <- B { if ( }",
+		Error: "^test.file:1.15",
 	},
 	{
 		Name: `bad multi-line action`,
-		// = instead of ==.
-		Input: "\nA <- B T:{\n	if ( }",
+		Input: "\nA <- B {\n	if ( }",
 		Error: "^test.file:3.7",
 	},
 	{
-		Name: `bad action: invalid nested func def`,
-		// = instead of ==.
-		Input: "\nA <- B T:{ func f() int { return 1 } }",
-		Error: "^test.file:2.17",
+		Name:  `bad action: invalid nested func def`,
+		Input: "\nA <- B { func f() int { return 1 } }",
+		Error: "^test.file:2.15",
+	},
+	{
+		Name:       `action with nested return`,
+		Input:      "A <- B { if true { return 0 } else { return 1 } }",
+		FullString: "A <- ((B) { if true { return 0 } else { return 1 } })",
+		String:     "A <- B {…}",
+	},
+	{
+		Name:  `missing return`,
+		Input: "A <- B { }",
+		Error: "^test.file:1.9: no return statement",
+	},
+	{
+		Name:  `multi-value return`,
+		Input: "A <- B { return 1, 2, 3 }",
+		Error: "^test.file:1.9: must return exactly one value",
+	},
+	{
+		Name:  `non-conversion multi-ary function return`,
+		Input: "A <- B { return f(a, b, c) }",
+		Error: "^test.file:1.9: cannot infer type",
+	},
+	{
+		Name:  `non-conversion nil-ary function return`,
+		Input: "A <- B { return f() }",
+		Error: "^test.file:1.9: cannot infer type",
+	},
+	{
+		Name:  `non-conversion function return`,
+		Input: "A <- B { return f(a, b, c) }",
+		Error: "^test.file:1.9: cannot infer type",
 	},
 
 	// I/O errors.

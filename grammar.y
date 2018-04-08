@@ -26,7 +26,7 @@ import "io"
 %type <grammar> Grammar
 %type <expr> Expr, ActExpr, SeqExpr, LabelExpr, PredExpr, RepExpr, Operand
 %type <action> GoAction
-%type <text> GoPred GoType Prelude
+%type <text> GoPred Prelude
 %type <texts> Args
 %type <rule> Rule
 %type <rules> Rules
@@ -152,20 +152,16 @@ GoPred:
 	}
 
 GoAction:
-	GoType _CODE
+	_CODE
 	{
-		loc := $2.Begin()
+		loc := $1.Begin()
 		loc.Col++ // skip the open {.
-		err := ParseGoBody(loc, $2.String(), $1.String() )
+		typ, err := ParseGoBody(loc, $1.String())
 		if err != nil {
 			peggylex.(*lexer).err = err
 		}
-		$$ = &Action{ Code: $2, ReturnType: $1 }
+		$$ = &Action{ Code: $1, ReturnType: typ }
 	}
-
-GoType:
-	_IDENT ':' Nl { $$ = $1 }
-|	_STRING ':' Nl { $$ = $1 }
 
 NewLine:
 	'\n' NewLine

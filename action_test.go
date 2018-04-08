@@ -180,7 +180,7 @@ var actionTests = []actionTest{
 	{
 		name: "action",
 		grammar: `
-			A <- l1:. l2:. l3:. "map[string]string":{
+			A <- l1:. l2:. l3:. {
 				return map[string]string{
 					"1": l1,
 					"2": l2,
@@ -203,10 +203,10 @@ var actionTests = []actionTest{
 	{
 		name: "start and end",
 		grammar: `
-			A <- smiley? as v:bs cs "[2]int":{ return v }
+			A <- smiley? as v:bs cs { return [2]int(v) }
 			smiley <- '☺'
 			as <- 'a'*
-			bs <- 'b'* "[2]int":{ return [2]int{start, end} }
+			bs <- 'b'* { return [2]int{start, end} }
 			cs <- 'c'*
 		`,
 		cases: []actionTestCase{
@@ -218,6 +218,39 @@ var actionTests = []actionTest{
 			{"☺aaabbbccc", []interface{}{float64(len("☺") + 3), float64(len("☺") + 6)}},
 		},
 	},
+	{
+		name: "type inference",
+		grammar: `
+			A <- convert / ptr_convert / assert / func / struct / ptr_struct / map / array / slice / int / float / rune / string
+			convert <- x:("convert" { return int32(1) }) { return string(fmt.Sprintf("%T", x)) }
+			ptr_convert <- x:("ptr_convert" { return (*string)(nil) }) { return string(fmt.Sprintf("%T", x)) }
+			assert <- x:("assert" { var c interface{} = peg.Node{}; return c.(peg.Node) }) { return string(fmt.Sprintf("%T", x)) }
+			func <- x:("func" { return func(){} }) { return string(fmt.Sprintf("%T", x)) }
+			struct <- x:("struct" { return peg.Node{} }) { return string(fmt.Sprintf("%T", x)) }
+			ptr_struct <- x:("ptr_struct" { return &peg.Node{} }) { return string(fmt.Sprintf("%T", x)) }
+			map <- x:("map" { return map[string]int{} }) { return string(fmt.Sprintf("%T", x)) }
+			array <- x:("array" { return [5]int{} }) { return string(fmt.Sprintf("%T", x)) }
+			slice <- x:("slice" { return []int{} }) { return string(fmt.Sprintf("%T", x)) }
+			int <- x:("int" { return 0 }) { return string(fmt.Sprintf("%T", x)) }
+			float <- x:("float" { return 0.0 }) { return string(fmt.Sprintf("%T", x)) }
+			rune <- x:("rune" { return 'a' }) { return string(fmt.Sprintf("%T", x)) }
+			string <- x:("string" { return "" }) { return string(fmt.Sprintf("%T", x)) }
+		`,
+		cases: []actionTestCase{
+			{"convert", "int32"},
+			{"ptr_convert", "*string"},
+			{"assert", "peg.Node"},
+			{"func", "func()"},
+			{"struct", "peg.Node"},
+			{"ptr_struct", "*peg.Node"},
+			{"array", "[5]int"},
+			{"slice", "[]int"},
+			{"int", "int"},
+			{"float", "float64"},
+			{"rune", "int32"},
+			{"string", "string"},
+		},
+	},
 
 	// A simple calculator.
 	// BUG: The test grammar has reverse the normal associativity — oops.
@@ -225,14 +258,14 @@ var actionTests = []actionTest{
 		name: "calculator",
 		grammar: `
 			A <- Expr
-			Expr <- l:Term op:(Plus / Minus) r:Expr int:{ return op(l, r) } / x:Term int:{ return x }
-			Plus <- "+" "func(int, int) int":{ return func(a, b int) int { return a + b } }
-			Minus <- "-" "func(int, int) int":{ return func(a, b int) int { return a - b } }
-			Term <- l:Factor op:(Times / Divide) r:Term int:{ return op(l, r) } / x:Factor int:{ return x }
-			Times <- "*" "func(int, int) int":{ return func(a, b int) int { return a * b } }
-			Divide <- "/" "func(int, int) int":{ return func(a, b int) int { return a / b } }
-			Factor <- Number / '(' x:Expr ')' int:{ return x }
-			Number <- x:[0-9]+ int:{ var i int; for _, r := range x { i = i * 10 + (int(r) - '0') }; return i }
+			Expr <- l:Term op:(Plus / Minus) r:Expr { return int(op(l, r)) } / x:Term { return int(x) }
+			Plus <- "+" { return func(a, b int) int { return a + b } }
+			Minus <- "-" { return func(a, b int) int { return a - b } }
+			Term <- l:Factor op:(Times / Divide) r:Term { return int(op(l, r)) } / x:Factor { return int(x) }
+			Times <- "*" { return func(a, b int) int { return a * b } }
+			Divide <- "/"{ return func(a, b int) int { return a / b } }
+			Factor <- Number / '(' x:Expr ')' { return int(x) }
+			Number <- x:[0-9]+ { var i int; for _, r := range x { i = i * 10 + (int(r) - '0') }; return int(i) }
 		`,
 		cases: []actionTestCase{
 			{"1", 1.0},
@@ -312,6 +345,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"os"
 
@@ -334,7 +368,10 @@ func main() {
 	}
 	_, result.T = _AAction(p, 0)
 	if err := json.NewEncoder(os.Stdout).Encode(&result); err != nil {
-		os.Stderr.WriteString(err.Error() + "\n")
+		// Hack — we need fmt imported for the type inference test.
+		// However, if imported, it must be used.
+		// Here we use it at least once.
+		fmt.Fprintf(os.Stderr, err.Error() + "\n")
 		os.Exit(1)
 	}
 }

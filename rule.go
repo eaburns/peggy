@@ -405,11 +405,14 @@ func (e *RepExpr) End() Loc   { return e.Loc }
 // The value contains an element for each match
 // of the sub-expression.
 func (e *RepExpr) Type() string {
-	t := e.Expr.Type()
-	if t == "string" {
+	switch t := e.Expr.Type(); t {
+	case "":
+		return ""
+	case "string":
 		return t
+	default:
+		return "[]" + t
 	}
-	return "[]" + t
 }
 
 func (e *RepExpr) epsilon() bool { return e.Op == '*' }

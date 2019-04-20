@@ -42,6 +42,9 @@ func Check(grammar *Grammar) error {
 			l := Label{Name: name, Type: expr.Type(), N: expr.N}
 			rule.Labels = append(rule.Labels, l)
 		}
+		sort.Slice(rule.Labels, func(i, j int) bool {
+			return rule.Labels[i].N < rule.Labels[j].N
+		})
 	}
 	if err := errs.ret(); err != nil {
 		return err

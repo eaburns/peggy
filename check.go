@@ -253,7 +253,7 @@ func (e *Choice) check(rules map[string]*Rule, labels map[string]*LabelExpr, val
 	for _, sub := range e.Exprs {
 		// Check types, but if either type is "",
 		// it's from a previous error; don't report again.
-		if got := sub.Type(); *genActions && valueUsed && got != t && got != "" && t != "" {
+		if got := sub.Type(); got != "" && *genActions && valueUsed && got != t && got != "" && t != "" {
 			errs.add(sub, "type mismatch: got %s, expected %s", got, t)
 		}
 	}

@@ -450,11 +450,14 @@ func (e *OptExpr) End() Loc   { return e.Loc }
 // The value is a pointer to the sub-expression's value if it matched,
 // or a nil pointer if it did not match.
 func (e *OptExpr) Type() string {
-	t := e.Expr.Type()
-	if t == "string" {
+	switch t := e.Expr.Type(); {
+	case t == "":
+		return ""
+	case t == "string":
 		return t
+	default:
+		return "*" + e.Expr.Type()
 	}
-	return "*" + e.Expr.Type()
 }
 
 func (e *OptExpr) epsilon() bool { return true }

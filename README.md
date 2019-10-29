@@ -494,7 +494,7 @@ Here is an example:
 func Parse(input string) (AstNode, error) {
 	parser := _NewParser(input)
 	if pos, perr := _RuleAccepts(parser, 0); pos < 0 {
-		_, failTree := _RuleFail(parser, perr)
+		_, failTree := _RuleFail(parser, 0, perr)
 		return nil, peg.SimpleError(input, failTree)
 	}
 	// Or, instead call _RuleNode(parser, 0)

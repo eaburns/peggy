@@ -40,6 +40,8 @@ golint ./... \
 	| egrep -v 'grammar.y.*ALL_CAPS'\
 	| egrep -v '(Begin|End|FullParenString|Type|CanFail|Walk).*should have comment or be unexported'\
 	| egrep -v 'GenAccept should have comment or'\
+	| egrep -v 'calc.go.*use underscores'\
+	| egrep -v 'calc.go.*const __ should be _'\
 	> $o 2>&1
 # Silly: diff the grepped golint output with empty.
 # If it's non-empty, error, otherwise succeed.

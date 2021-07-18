@@ -251,15 +251,23 @@ var declsTemplate = `
 		rule int
 	}
 
-	func {{$pre}}NewParser(text string) *{{$pre}}Parser {
-		return &{{$pre}}Parser{
+	type tooBigError struct{}
+	func (tooBigError) Error() string { return "input is too big" }
+
+	func {{$pre}}NewParser(text string) (*{{$pre}}Parser, error) {
+		n := len(text)+1
+		if n < 0 {
+			return nil, tooBigError{}
+		}
+		p := &{{$pre}}Parser{
 			text: text,
-			deltaPos: make([][{{$pre}}N]int32, len(text)+1),
-			deltaErr: make([][{{$pre}}N]int32, len(text)+1),
+			deltaPos: make([][{{$pre}}N]int32, n),
+			deltaErr: make([][{{$pre}}N]int32, n),
 			node: make(map[{{$pre}}key]*peg.Node),
 			fail: make(map[{{$pre}}key]*peg.Fail),
 			act: make(map[{{$pre}}key]interface{}),
 		}
+		return p, nil
 	}
 
 	func {{$pre}}max(a, b int) int {
@@ -293,7 +301,7 @@ var declsTemplate = `
 		de := parser.deltaErr[start][rule] - 1
 		return int(dp), int(de), true
 	}
-	
+
 	func {{$pre}}failMemo(parser *{{$pre}}Parser, rule, start, errPos int) (int, *peg.Fail) {
 		if start > parser.lastFail {
 			return -1, &peg.Fail{}

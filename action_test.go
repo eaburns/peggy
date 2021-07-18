@@ -358,7 +358,11 @@ func main() {
 		os.Stderr.WriteString(err.Error() + "\n")
 		os.Exit(1)
 	}
-	p := _NewParser(string(data))
+	p, err := _NewParser(string(data))
+	if err != nil {
+		os.Stderr.WriteString(err.Error() + "\n")
+		os.Exit(1)
+	}
 	if pos, _ := _AAccepts(p, 0); pos < 0 {
 		os.Stderr.WriteString("parse failed")
 		os.Exit(1)

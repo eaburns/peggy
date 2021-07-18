@@ -2131,7 +2131,11 @@ func main() {
 		os.Stderr.WriteString(err.Error() + "\n")
 		os.Exit(1)
 	}
-	p := _NewParser(string(data))
+	p, err := _NewParser(string(data))
+	if err != nil {
+		os.Stderr.WriteString(err.Error() + "\n")
+		os.Exit(1)
+	}
 	var result struct {
 		Pos int
 		Perr int

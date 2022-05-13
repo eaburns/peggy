@@ -30,21 +30,8 @@ func Check(grammar *Grammar) error {
 	for _, r := range rules {
 		r.checkLeft(ruleMap, p, &errs)
 	}
-
-	var labels []map[string]*LabelExpr
 	for _, r := range rules {
-		ls := check(r, ruleMap, &errs)
-		labels = append(labels, ls)
-	}
-	for i, ls := range labels {
-		rule := rules[i]
-		for name, expr := range ls {
-			l := Label{Name: name, Type: expr.Type(), N: expr.N}
-			rule.Labels = append(rule.Labels, l)
-		}
-		sort.Slice(rule.Labels, func(i, j int) bool {
-			return rule.Labels[i].N < rule.Labels[j].N
-		})
+		check(r, ruleMap, &errs)
 	}
 	if err := errs.ret(); err != nil {
 		return err
@@ -238,41 +225,32 @@ func (e *CharClass) checkLeft(rules map[string]*Rule, p path, errs *Errors) {}
 
 func (e *Any) checkLeft(rules map[string]*Rule, p path, errs *Errors) {}
 
-func check(rule *Rule, rules map[string]*Rule, errs *Errors) map[string]*LabelExpr {
-	labels := make(map[string]*LabelExpr)
-	rule.Expr.check(rules, labels, true, errs)
-	return labels
+type ctx struct {
+	rules     map[string]*Rule
+	allLabels *[]*LabelExpr
+	curLabels map[string]*LabelExpr
 }
 
-func (e *Choice) check(rules map[string]*Rule, labels map[string]*LabelExpr, valueUsed bool, errs *Errors) {
-	for _, sub := range e.Exprs {
-		sub.check(rules, labels, valueUsed, errs)
+func check(rule *Rule, rules map[string]*Rule, errs *Errors) {
+	ctx := ctx{
+		rules:     rules,
+		allLabels: &rule.Labels,
+		curLabels: make(map[string]*LabelExpr),
 	}
-
-	t := e.Type()
-	for _, sub := range e.Exprs {
-		// Check types, but if either type is "",
-		// it's from a previous error; don't report again.
-		if got := sub.Type(); *genActions && valueUsed && got != t && got != "" && t != "" {
-			errs.add(sub, "type mismatch: got %s, expected %s", got, t)
-		}
-	}
-}
-
-func (e *Action) check(rules map[string]*Rule, labels map[string]*LabelExpr, valueUsed bool, errs *Errors) {
-	e.Expr.check(rules, labels, false, errs)
-	for _, l := range labels {
-		e.Labels = append(e.Labels, l)
-	}
-	sort.Slice(e.Labels, func(i, j int) bool {
-		return e.Labels[i].Label.String() < e.Labels[j].Label.String()
+	rule.Expr.check(ctx, true, errs)
+	sort.Slice(rule.Labels, func(i, j int) bool {
+		return rule.Labels[i].N < rule.Labels[j].N
 	})
 }
 
-// BUG: figure out what to do about sequence types.
-func (e *Sequence) check(rules map[string]*Rule, labels map[string]*LabelExpr, valueUsed bool, errs *Errors) {
+func (e *Choice) check(ctx ctx, valueUsed bool, errs *Errors) {
 	for _, sub := range e.Exprs {
-		sub.check(rules, labels, valueUsed, errs)
+		subCtx := ctx
+		subCtx.curLabels = make(map[string]*LabelExpr)
+		for n, l := range ctx.curLabels {
+			subCtx.curLabels[n] = l
+		}
+		sub.check(subCtx, valueUsed, errs)
 	}
 	t := e.Exprs[0].Type()
 	for _, sub := range e.Exprs {
@@ -282,42 +260,9 @@ func (e *Sequence) check(rules map[string]*Rule, labels map[string]*LabelExpr, v
 	}
 }
 
-func (e *LabelExpr) check(rules map[string]*Rule, labels map[string]*LabelExpr, valueUsed bool, errs *Errors) {
-	e.Expr.check(rules, labels, true, errs)
-	if _, ok := labels[e.Label.String()]; ok {
-		errs.add(e.Label, "label %s redefined", e.Label.String())
-	}
-	e.N = len(labels)
-	labels[e.Label.String()] = e
-}
-
-func (e *PredExpr) check(rules map[string]*Rule, labels map[string]*LabelExpr, valueUsed bool, errs *Errors) {
-	e.Expr.check(rules, labels, false, errs)
-}
-
-func (e *RepExpr) check(rules map[string]*Rule, labels map[string]*LabelExpr, valueUsed bool, errs *Errors) {
-	e.Expr.check(rules, labels, valueUsed, errs)
-}
-
-func (e *OptExpr) check(rules map[string]*Rule, labels map[string]*LabelExpr, valueUsed bool, errs *Errors) {
-	e.Expr.check(rules, labels, valueUsed, errs)
-}
-
-func (e *SubExpr) check(rules map[string]*Rule, labels map[string]*LabelExpr, valueUsed bool, errs *Errors) {
-	e.Expr.check(rules, labels, valueUsed, errs)
-}
-
-func (e *Ident) check(rules map[string]*Rule, _ map[string]*LabelExpr, _ bool, errs *Errors) {
-	r, ok := rules[e.Name.String()]
-	if !ok {
-		errs.add(e, "rule %s undefined", e.Name.String())
-	} else {
-		e.rule = r
-	}
-}
-
-func (e *PredCode) check(_ map[string]*Rule, labels map[string]*LabelExpr, _ bool, _ *Errors) {
-	for _, l := range labels {
+func (e *Action) check(ctx ctx, valueUsed bool, errs *Errors) {
+	e.Expr.check(ctx, false, errs)
+	for _, l := range ctx.curLabels {
 		e.Labels = append(e.Labels, l)
 	}
 	sort.Slice(e.Labels, func(i, j int) bool {
@@ -325,8 +270,65 @@ func (e *PredCode) check(_ map[string]*Rule, labels map[string]*LabelExpr, _ boo
 	})
 }
 
-func (e *Literal) check(map[string]*Rule, map[string]*LabelExpr, bool, *Errors) {}
+// BUG: figure out what to do about sequence types.
+func (e *Sequence) check(ctx ctx, valueUsed bool, errs *Errors) {
+	for _, sub := range e.Exprs {
+		sub.check(ctx, valueUsed, errs)
+	}
+	t := e.Exprs[0].Type()
+	for _, sub := range e.Exprs {
+		if got := sub.Type(); *genActions && valueUsed && got != t && got != "" && t != "" {
+			errs.add(sub, "type mismatch: got %s, expected %s", got, t)
+		}
+	}
+}
 
-func (e *CharClass) check(map[string]*Rule, map[string]*LabelExpr, bool, *Errors) {}
+func (e *LabelExpr) check(ctx ctx, valueUsed bool, errs *Errors) {
+	e.Expr.check(ctx, true, errs)
+	if _, ok := ctx.curLabels[e.Label.String()]; ok {
+		errs.add(e.Label, "label %s redefined", e.Label.String())
+	}
+	e.N = len(*ctx.allLabels)
+	*ctx.allLabels = append(*ctx.allLabels, e)
+	ctx.curLabels[e.Label.String()] = e
+}
 
-func (e *Any) check(map[string]*Rule, map[string]*LabelExpr, bool, *Errors) {}
+func (e *PredExpr) check(ctx ctx, valueUsed bool, errs *Errors) {
+	e.Expr.check(ctx, false, errs)
+}
+
+func (e *RepExpr) check(ctx ctx, valueUsed bool, errs *Errors) {
+	e.Expr.check(ctx, valueUsed, errs)
+}
+
+func (e *OptExpr) check(ctx ctx, valueUsed bool, errs *Errors) {
+	e.Expr.check(ctx, valueUsed, errs)
+}
+
+func (e *SubExpr) check(ctx ctx, valueUsed bool, errs *Errors) {
+	e.Expr.check(ctx, valueUsed, errs)
+}
+
+func (e *Ident) check(ctx ctx, _ bool, errs *Errors) {
+	r, ok := ctx.rules[e.Name.String()]
+	if !ok {
+		errs.add(e, "rule %s undefined", e.Name.String())
+	} else {
+		e.rule = r
+	}
+}
+
+func (e *PredCode) check(ctx ctx, _ bool, _ *Errors) {
+	for _, l := range ctx.curLabels {
+		e.Labels = append(e.Labels, l)
+	}
+	sort.Slice(e.Labels, func(i, j int) bool {
+		return e.Labels[i].Label.String() < e.Labels[j].Label.String()
+	})
+}
+
+func (e *Literal) check(ctx, bool, *Errors) {}
+
+func (e *CharClass) check(ctx, bool, *Errors) {}
+
+func (e *Any) check(ctx, bool, *Errors) {}

@@ -18,7 +18,11 @@ func main() {
 	scanner := bufio.NewScanner(os.Stdin)
 	for scanner.Scan() {
 		line := scanner.Text()
-		p := _NewParser(line)
+		p, err := _NewParser(line)
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
 		if pos, perr := _ExprAccepts(p, 0); pos < 0 {
 			_, fail := _ExprFail(p, 0, perr)
 			fmt.Println(peg.SimpleError(line, fail))
@@ -84,15 +88,24 @@ type _key struct {
 	rule  int
 }
 
-func _NewParser(text string) *_Parser {
-	return &_Parser{
+type tooBigError struct{}
+
+func (tooBigError) Error() string { return "input is too big" }
+
+func _NewParser(text string) (*_Parser, error) {
+	n := len(text) + 1
+	if n < 0 {
+		return nil, tooBigError{}
+	}
+	p := &_Parser{
 		text:     text,
-		deltaPos: make([][_N]int32, len(text)+1),
-		deltaErr: make([][_N]int32, len(text)+1),
+		deltaPos: make([][_N]int32, n),
+		deltaErr: make([][_N]int32, n),
 		node:     make(map[_key]*peg.Node),
 		fail:     make(map[_key]*peg.Fail),
 		act:      make(map[_key]interface{}),
 	}
+	return p, nil
 }
 
 func _max(a, b int) int {

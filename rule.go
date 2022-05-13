@@ -48,7 +48,7 @@ type Rule struct {
 	epsilon bool
 
 	// Labels is the set of all label names in the rule's expression.
-	Labels []Label
+	Labels []*LabelExpr
 }
 
 func (r *Rule) Begin() Loc  { return r.Name.Begin() }
@@ -70,17 +70,6 @@ func (n Name) End() Loc {
 		return n.Name.End()
 	}
 	return n.Args[len(n.Args)-1].End()
-}
-
-// A Label is the name and type of a labeled sub-expression.
-type Label struct {
-	// Name is the name of the label.
-	Name string
-	// Type is the Go type of the labeled sub-expression.
-	Type string
-	// N is the label's unique integer within its containing Rule.
-	// It is a small integer that may be used as an array index.
-	N int
 }
 
 // Text is a string of text located along with its location in the input.
@@ -159,7 +148,7 @@ type Expr interface {
 	// check checks for undefined identifiers,
 	// linking defined identifiers to rules;
 	// and checks for type mismatches.
-	check(rules map[string]*Rule, labels map[string]*LabelExpr, valueUsed bool, errs *Errors)
+	check(ctx ctx, valueUsed bool, errs *Errors)
 }
 
 // A Choice is an ordered choice between expressions.

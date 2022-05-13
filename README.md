@@ -205,6 +205,26 @@ A label is an identifier followed by : followed by an expression.
 
 Labels are used to create new identifiers used by actions and code predicates.
 
+The scope of a label is its branch in the nearest, containing choice expression,
+or in the entire rule if there is no choice expression.
+
+For example,
+
+	R <- a:A / a:A / a:A / a:A
+
+All `a`s refer to different labels, as they are all scoped to different branches of the choice, `/`.
+
+Similarly, in this expression,
+
+	R <- a:A / (a:A / a:A)
+
+all `a`s are different labels.
+However,
+
+	R <- a:A / a:A a:A
+
+is an error, as `a` is re-defined in the right-hand branch of the choice, `/`.
+
 **Accepts:**
 A label accepts if its subexpression accepts.
 
@@ -349,7 +369,7 @@ The expression must result in a boolean value,
 and must be syntactically valid as the condition of an
 [if statement](https://golang.org/ref/spec#If_statements).
 
-Label expressions of the containing rule define identifiers accessible in the Go code.
+Label expressions in scope of the code predicate define identifiers accessible in the Go code.
 The value of the identifier is a `string` of the input consumed by the labeled expression.
 If the labeled expression has yet to accept at the time the code predicate is evalutade, the string is empty.
 
@@ -431,7 +451,7 @@ and the returned value must be one of:
 * [a rune literal](https://golang.org/ref/spec#Rune_literals)
 * [a string literal](https://golang.org/ref/spec#String_literals)
 
-Label expressions of the containing rule define identifiers accessible in the Go code.
+Label expressions in scope of the action define identifiers accessible in the Go code.
 The value of the identifier is the value of the labeled expression if it accepted.
 If the labeled expression has yet to accept at the time the action is evaluated,
 the value is the zero value of the corresponding type.

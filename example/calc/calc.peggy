@@ -19,7 +19,11 @@ func main() {
 	scanner := bufio.NewScanner(os.Stdin)
 	for scanner.Scan() {
 		line := scanner.Text()
-		p := _NewParser(line)
+		p, err := _NewParser(line)
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
 		if pos, perr := _ExprAccepts(p, 0); pos < 0 {
 			_, fail := _ExprFail(p, 0 ,perr)
 			fmt.Println(peg.SimpleError(line, fail))

@@ -79,6 +79,16 @@ G <- [fgh]*`,
 			err:  "^test.file:1.12,1.13: label a redefined",
 		},
 		{
+			name: "non-redefined label with same name in different branch",
+			in:   "A <- a:[a] / (a:[a] / a:[a]) / a:[a]",
+			err:  "",
+		},
+		{
+			name: "redefined label in same choice branch",
+			in:   "A <- a:[a] / a:[a] a:[a]",
+			err:  "^test.file:1.20,1.21: label a redefined",
+		},
+		{
 			name: "choice first error",
 			in:   "A <- Undefined / A",
 			err:  ".+",

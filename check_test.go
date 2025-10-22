@@ -253,6 +253,15 @@ G <- [fgh]*`,
 			err: "^test.file:1.8,1.27: type mismatch: got int, expected string\n" +
 				"test.file:2.16,2.35: type mismatch: got int, expected string$",
 		},
+		{
+			name: "choice non-final subexpression that always matches is an error",
+			in:   `A <- "B"? / "C"`,
+			err:  "non-final choice subexpression always matches:",
+		},
+		{
+			name: "choice final subexpression may always match",
+			in:   `A <- "B" / "C"?`,
+		},
 	}
 	for _, test := range tests {
 		test := test

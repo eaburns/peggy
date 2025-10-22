@@ -253,7 +253,10 @@ func (e *Choice) check(ctx ctx, valueUsed bool, errs *Errors) {
 		sub.check(subCtx, valueUsed, errs)
 	}
 	t := e.Exprs[0].Type()
-	for _, sub := range e.Exprs {
+	for i, sub := range e.Exprs {
+		if i < len(e.Exprs) - 1 && !sub.CanFail() {
+			errs.add(e, "non-final choice subexpression always matches: %s", sub)
+		}
 		if got := sub.Type(); *genActions && valueUsed && got != t && got != "" && t != "" {
 			errs.add(sub, "type mismatch: got %s, expected %s", got, t)
 		}
